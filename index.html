@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <!-- viewport-fit=cover + safe-area insets in CSS for notched iPhones -->
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover"
+    />
+    <meta name="color-scheme" content="dark light" />
+    <meta name="theme-color" content="#181a2b" />
+
+    <title>OpenAudioBooks 0.1.0 (alpha)</title>
+    <meta
+      name="description"
+      content="OpenAudioBooks alpha: a free, public, non-commercial catalogue and player for audiobooks that are legally free to listen to from external sources. Development build."
+    />
+
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="icon" href="/icons/icon-192.png" type="image/png" />
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+
+    <!-- iOS-friendly metadata: installable to the home screen, standalone window. -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="OpenAudioBooks" />
+    <meta name="format-detection" content="telephone=no" />
+
+    <!--
+      No external fonts, CDNs, analytics or third-party scripts are loaded.
+      OpenAudioBooks makes no requests to any server other than the sources a
+      user explicitly opens audio from.
+    -->
+  </head>
+  <body>
+    <div id="root"></div>
+    <noscript>
+      OpenAudioBooks requires JavaScript for local playback and catalogue browsing.
+    </noscript>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

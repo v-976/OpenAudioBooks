@@ -1,0 +1,11 @@
+# Normalise line endings on checkin; keep LF in the working tree.
+* text=auto eol=lf
+
+# Binary assets must never be touched.
+*.png binary
+*.wav binary
+*.ico binary
+
+# Lockfiles and generated manifests stay LF.
+package-lock.json text eol=lf
+*.webmanifest text eol=lf
