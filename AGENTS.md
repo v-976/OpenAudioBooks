@@ -196,13 +196,32 @@ conflated, derived from one another, or reused for one another:
 
 ## 10. Testing and verification
 
-42. Run `npm run check` (lint, typecheck, tests, production build) before
-    reporting work as done. Fix errors your change caused. Do not suppress them.
+42. For a completed **functional code change**, run `npm run check` (lint,
+    typecheck, tests, production build) once before reporting the work as done.
+    Fix errors the change caused; do not suppress them. Documentation-only or
+    organisational changes require only checks relevant to the changed files,
+    unless the assigned task explicitly requires more.
 43. Add tests for domain invariants, narrator relationships, resume and skip
     behaviour, persistence across a simulated restart, rights/attribution
     rendering, language filtering and localization fallback.
 44. Do not weaken or delete an existing test to make a change pass. If a test is
     genuinely wrong, say so explicitly and explain why.
+
+### Verification economy
+
+- During implementation, run only the tests and static checks directly related
+  to the component being changed. Do not run the whole suite after every small
+  edit.
+- Run the complete `npm run check` once, when a logically complete functional
+  change is ready. Repeat it only after fixing a failure or after a subsequent
+  change that can technically affect its result.
+- Do not repeat a successful check without a concrete technical reason. Do not
+  repeatedly run `npm audit`, the production build, or other expensive checks
+  when their inputs have not changed.
+- Add tests for real requirements, corrected defects, and important regressions.
+  Never add tests merely to increase the test count.
+- Never hide errors, disable critical checks, or reduce application quality in
+  the name of saving time or resources.
 
 ## 11. Honesty
 
@@ -252,6 +271,87 @@ conflated, derived from one another, or reused for one another:
 58. Architectural changes outside the scope of the assigned task require prior
     explanation, not just a good diff.
 
+## 14. Agent operating procedure
+
+These rules govern how an agent executes and reports work. They complement the
+product and architecture constraints above; they never override them.
+
+### Long-running work and progress reporting
+
+- Never stop a long-running operation, calculation, analysis, or implementation
+  silently. Before or during a genuinely long operation, tell the user:
+  - what is running;
+  - what result is expected;
+  - how continued progress can be recognised;
+  - which logs, files, process ids, or checkpoints can be inspected;
+  - whether there are any signs that it is stuck.
+- Never describe a stopped, failed, or interrupted process as still running. If
+  it exits abnormally, report that explicitly and preserve its output.
+- Do not terminate a process merely because it is slower than expected. First
+  inspect its actual state and report what was found.
+- Use durable checkpoints when intermediate work can be saved, so a failure or
+  interruption does not discard valid results.
+- For lengthy tasks, send concise intermediate updates at meaningful stage
+  boundaries. Updates must contain new factual state, not repetitive statements
+  that work is continuing.
+
+### STOP ON BLOCKER
+
+When a tool, API, permission, or external dependency is unavailable:
+
+1. Make no more than **two meaningful attempts**.
+2. Record the exact error and the operation it blocked.
+3. Do not cycle through guessed tool names or increasingly indirect workarounds.
+4. If the blocked verification is optional, mark it **`NOT VERIFIED`** and
+   continue with the remaining safe work.
+5. If an operation required to complete the assignment is blocked, mark the task
+   **`BLOCKED`**, preserve completed work, and ask the user for a decision.
+6. Never claim that an unverified capability works.
+
+An unavailable browser tool is not by itself a reason to stop implementation
+when browser verification is optional. It is a reason to report browser
+verification as `NOT VERIFIED`.
+
+### Efficiency and scope
+
+- Prefer a local correction over rewriting a subsystem, targeted tests over
+  repeated full runs, inspection of an existing result over recomputing it, and
+  clear diagnosis over open-ended retries.
+- Use the minimum time, model context, network traffic, and compute needed for a
+  reliable result. Resource efficiency must never conceal an error or weaken a
+  required check.
+- Do not change architecture or neighbouring components without necessity, and
+  do not start the next milestone automatically.
+- Keep progress and final reports concise. Report decisions and evidence, not a
+  transcript of internal reasoning.
+
+### Project safety and stopping
+
+- Never delete user files, local data, Git history, or results from unfinished
+  work. Never use `git reset --hard`, `git clean -fd`, or an equivalent
+  destructive command without explicit permission.
+- Do not discard or overwrite changes you did not create. Unexpected local
+  changes are a blocker: stop and report them before editing.
+- Do not create a commit or push when a task ends with a critical error or a
+  required check still failing.
+- When work must stop, leave the project in the safest workable state, preserve
+  useful results, and explain exactly how the work can be continued.
+
+### Required final report
+
+Every completed task report states, as applicable:
+
+- what was completed;
+- what was not completed;
+- problems discovered;
+- checks actually run and their results;
+- anything that remains for manual verification;
+- Git status, commit and push state;
+- whether the user must take any action.
+
+Never report a process, test, verification, commit, or push as successful until
+its result has been observed and confirmed.
+
 ---
 
 ## Quick orientation for a new agent
@@ -286,4 +386,3 @@ Three failures matter most, and all are structural rather than cosmetic:
    `0 мин`, a duration sort over a partial catalogue must not be presented as a
    provider-wide ranking, and a provider field must not be trusted without
    checking what it actually contains.
-
