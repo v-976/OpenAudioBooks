@@ -11,10 +11,14 @@ import { EditionPage } from '../pages/EditionPage';
 import { SourcePage } from '../pages/SourcePage';
 import { BrowsePage } from '../pages/BrowsePage';
 import { AboutPage } from '../pages/AboutPage';
+import { SettingsPage } from '../pages/SettingsPage';
 
 /**
- * Route table. Entity routes use the planned paths from the specification:
+ * Route table. Entity routes use the paths from the specification:
  * /authors/:id, /narrators/:id, /works/:id, /editions/:id, /sources/:id.
+ *
+ * Paths are NOT localised: they stay stable identifiers in English so that deep
+ * links and the Android client keep working regardless of interface language.
  */
 export function AppRoutes() {
   return (
@@ -24,6 +28,7 @@ export function AppRoutes() {
         <Route path="search" element={<SearchPage />} />
         <Route path="now-playing" element={<NowPlayingPage />} />
         <Route path="my-books" element={<MyBooksPage />} />
+        <Route path="settings" element={<SettingsPage />} />
         <Route path="about" element={<AboutPage />} />
         <Route path="works/:workId" element={<WorkPage />} />
         <Route path="authors/:authorId" element={<AuthorPage />} />

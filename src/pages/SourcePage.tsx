@@ -3,9 +3,10 @@ import { Link, useParams } from 'react-router-dom';
 import { EditionCard } from '../components/EditionCard';
 import { useCatalogue } from '../app/catalogueContext';
 import { usePlayer } from '../player/playerContext';
-import { searchEditions, type EditionView } from '../domain/search';
+import { type EditionView } from '../domain/search';
+import { useFilteredEditions } from '../app/catalogueLanguage';
 import { RightsBadge } from '../components/RightsBadge';
-import { rightsLabel } from '../domain/rights';
+import { useI18n } from '../i18n/i18nContext';
 import { NotFound } from './NotFound';
 
 /** Source detail: attribution, rights, availability and everything it provides. */
@@ -13,12 +14,11 @@ export function SourcePage() {
   const { sourceId = '' } = useParams();
   const { index } = useCatalogue();
   const player = usePlayer();
+  const { t } = useI18n();
 
   const source = index.sourcesById.get(decodeURIComponent(sourceId));
-  const editions = useMemo(
-    () => (source ? searchEditions(index, { sourceIds: [source.id] }) : []),
-    [index, source],
-  );
+  const filters = useMemo(() => ({ sourceIds: source ? [source.id] : [] }), [source]);
+  const editions = useFilteredEditions(filters);
   const narrators = useMemo(() => {
     const ids = new Set<string>();
     for (const view of editions) {
@@ -31,14 +31,14 @@ export function SourcePage() {
   }, [editions, index]);
 
   if (!source) {
-    return <NotFound title="Source not found" body="This source is not in the local catalogue." />;
+    return <NotFound title={t('source.notFound')} body={t('source.notFoundBody')} />;
   }
 
   return (
     <div className="page">
-      <nav className="breadcrumb" aria-label="Breadcrumb">
-        <Link to="/">Library</Link> <span aria-hidden="true">/</span>{' '}
-        <Link to="/sources">Sources</Link>
+      <nav className="breadcrumb" aria-label="breadcrumb">
+        <Link to="/">{t('nav.library')}</Link>{' '}
+        <Link to="/browse/sources">{t('browse.sources.title')}</Link>
       </nav>
 
       <h1 className="page__title">{source.name}</h1>
@@ -49,10 +49,10 @@ export function SourcePage() {
       </p>
 
       <dl className="detail-list">
-        <dt>Type</dt>
+        <dt>{t('common.type')}</dt>
         <dd>{source.sourceType}</dd>
 
-        <dt>Rights status</dt>
+        <dt>{t('source.rightsStatus')}</dt>
         <dd>
           <RightsBadge status={source.rightsStatus} />
           {source.licenseName ? <span> {source.licenseName}</span> : null}
@@ -60,7 +60,7 @@ export function SourcePage() {
             <>
               {' · '}
               <a href={source.licenseUrl} target="_blank" rel="noreferrer noopener">
-                Licence terms
+                {source.licenseUrl}
               </a>
             </>
           ) : null}
@@ -68,32 +68,29 @@ export function SourcePage() {
 
         {source.attribution ? (
           <>
-            <dt>Attribution</dt>
+            <dt>{t('common.attribution')}</dt>
             <dd>{source.attribution}</dd>
           </>
         ) : null}
 
         {source.availabilityNotes ? (
           <>
-            <dt>Availability</dt>
+            <dt>{t('common.availability')}</dt>
             <dd>{source.availabilityNotes}</dd>
           </>
         ) : null}
 
-        <dt>Identifier</dt>
+        <dt>{t('common.identifier')}</dt>
         <dd className="mono">{source.id}</dd>
       </dl>
 
       {source.rightsStatus === 'unknown' ? (
-        <p className="notice notice--warning">
-          This source's rights status is unknown. Content from it is not treated as public domain
-          and is labelled accordingly on every edition.
-        </p>
+        <p className="notice notice--warning">{t('source.rightsUnknownWarning')}</p>
       ) : null}
 
       <section className="section" aria-labelledby="source-narrators">
         <h2 className="section__title" id="source-narrators">
-          Narrators on this source ({narrators.length})
+          {t('source.narratorsCount', undefined, narrators.length)}
         </h2>
         <ul className="chip-list">
           {narrators.map((narrator) => (
@@ -108,29 +105,30 @@ export function SourcePage() {
 
       <section className="section" aria-labelledby="source-editions">
         <h2 className="section__title" id="source-editions">
-          Audio editions ({editions.length})
+          {t('work.editionsCount', undefined, editions.length)}
         </h2>
-        <div className="list">
-          {editions.map((view: EditionView) => (
-            <EditionCard
-              key={view.edition.id}
-              view={view}
-              trailing={
-                <button
-                  type="button"
-                  className="button button--primary"
-                  onClick={() => void player.play(view.edition.id)}
-                >
-                  Play
-                </button>
-              }
-            />
-          ))}
-        </div>
-        <p className="section__footnote">
-          Rights labels are per edition: {editions.length === 0 ? 'none' : rightsLabel(editions[0].edition.rightsStatus)}{' '}
-          and others may differ.
-        </p>
+        {editions.length === 0 ? (
+          <p className="notice">{t('search.noResults')}</p>
+        ) : (
+          <div className="list">
+            {editions.map((view: EditionView) => (
+              <EditionCard
+                key={view.edition.id}
+                view={view}
+                trailing={
+                  <button
+                    type="button"
+                    className="button button--primary"
+                    onClick={() => void player.play(view.edition.id)}
+                  >
+                    {t('player.play')}
+                  </button>
+                }
+              />
+            ))}
+          </div>
+        )}
+        <p className="section__footnote">{t('source.perEditionRightsNote')}</p>
       </section>
     </div>
   );

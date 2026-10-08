@@ -12,6 +12,7 @@ import {
   setFavorite,
 } from './userStateRepository';
 import { loadPreferences, normalizePreferences, savePreferences } from './preferencesRepository';
+import { DEFAULT_PREFERENCES } from '../domain/types';
 
 const timestamp = '2026-02-01T10:00:00.000Z';
 
@@ -218,5 +219,88 @@ describe('preferences', () => {
     const loaded = loadPreferences();
     expect(loaded.playbackRate).toBe(1.5);
     expect(loaded.skipBackwardSeconds).toBe(10);
+  });
+});
+
+describe('language preferences', () => {
+  it('defaults the UI locale to Russian', () => {
+    expect(DEFAULT_PREFERENCES.uiLocale).toBe('ru');
+    expect(loadPreferences().uiLocale).toBe('ru');
+  });
+
+  it('defaults the preferred audiobook languages to Russian', () => {
+    expect(DEFAULT_PREFERENCES.preferredAudioLanguages).toEqual(['ru']);
+    expect(loadPreferences().preferredAudioLanguages).toEqual(['ru']);
+  });
+
+  it('persists both language settings independently', () => {
+    savePreferences(
+      normalizePreferences({ uiLocale: 'ru', preferredAudioLanguages: ['ru', 'en', 'fi'] }),
+    );
+    const loaded = loadPreferences();
+    expect(loaded.uiLocale).toBe('ru');
+    expect(loaded.preferredAudioLanguages).toEqual(['ru', 'en', 'fi']);
+  });
+
+  it('supports multiple audiobook languages without a schema change', () => {
+    const stored = normalizePreferences({ preferredAudioLanguages: ['ru-RU', 'en', 'rus', 'fi'] });
+    expect(stored.preferredAudioLanguages).toEqual(['ru', 'en', 'fi']);
+  });
+
+  it('keeps the UI locale separate from the audiobook languages', () => {
+    // Changing the audiobook languages must not touch the UI locale, and a
+    // Russian UI must not imply Russian-only audio.
+    const stored = normalizePreferences({
+      uiLocale: 'ru',
+      preferredAudioLanguages: ['en', 'fi'],
+    });
+    expect(stored.uiLocale).toBe('ru');
+    expect(stored.preferredAudioLanguages).toEqual(['en', 'fi']);
+  });
+
+  it('replaces an unavailable UI locale with the fallback rather than trusting it', () => {
+    const stored = normalizePreferences({ uiLocale: 'fi' });
+    expect(stored.uiLocale).toBe('ru');
+  });
+
+  it('preserves an intentionally empty audiobook language selection', () => {
+    // Empty means "no restriction" and must survive a reload as empty, not be
+    // silently restored to the default.
+    const stored = normalizePreferences({ preferredAudioLanguages: [] });
+    expect(stored.preferredAudioLanguages).toEqual([]);
+    savePreferences(stored);
+    expect(loadPreferences().preferredAudioLanguages).toEqual([]);
+  });
+
+  it('migrates Alpha 0.1.0 records without discarding them', () => {
+    // A record written before uiLocale/preferredAudioLanguages existed.
+    globalThis.localStorage.setItem(
+      'openaudiobooks.preferences.v1',
+      JSON.stringify({
+        playbackRate: 1.25,
+        skipForwardSeconds: 45,
+        skipBackwardSeconds: 20,
+        lastAudioEditionId: 'edition-a',
+      }),
+    );
+
+    const loaded = loadPreferences();
+    // Every 0.1.0 field survives unchanged...
+    expect(loaded.playbackRate).toBe(1.25);
+    expect(loaded.skipForwardSeconds).toBe(45);
+    expect(loaded.skipBackwardSeconds).toBe(20);
+    expect(loaded.lastAudioEditionId).toBe('edition-a');
+    // ...and the new fields get defaults rather than undefined.
+    expect(loaded.uiLocale).toBe('ru');
+    expect(loaded.preferredAudioLanguages).toEqual(['ru']);
+  });
+
+  it('drops unusable language values instead of storing them', () => {
+    const stored = normalizePreferences({
+      uiLocale: 42,
+      preferredAudioLanguages: ['ru', 'not a language', '', null],
+    });
+    expect(stored.uiLocale).toBe('ru');
+    expect(stored.preferredAudioLanguages).toEqual(['ru']);
   });
 });

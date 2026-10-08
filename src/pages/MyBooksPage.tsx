@@ -5,18 +5,37 @@ import { useCatalogue } from '../app/catalogueContext';
 import { useUserData } from '../app/userData';
 import { usePlayer } from '../player/playerContext';
 import { findEditionView, type EditionView } from '../domain/search';
+import { useI18n } from '../i18n/i18nContext';
 import { APP_VERSION } from '../version';
+import type { TranslationKey } from '../i18n/keys';
 
 type Tab = 'continue' | 'favorites' | 'finished';
 
-/** Personal, local-only library: progress, favourites and completed editions. */
+const TABS: { value: Tab; labelKey: TranslationKey }[] = [
+  { value: 'continue', labelKey: 'myBooks.tab.continue' },
+  { value: 'favorites', labelKey: 'myBooks.tab.favorites' },
+  { value: 'finished', labelKey: 'myBooks.tab.finished' },
+];
+
+/**
+ * Personal, local-only library: progress, favourites and completed editions.
+ *
+ * Deliberately NOT filtered by the audiobook-language preference. This screen
+ * lists what the user actually listened to; hiding a book because they later
+ * changed a catalogue filter would silently lose their own history. Language
+ * filtering belongs to catalogue browsing, not to personal state.
+ */
 export function MyBooksPage() {
   const { index } = useCatalogue();
   const { continueListening, favorites, completed, stateFor, clearAll, ready } = useUserData();
   const player = usePlayer();
+  const { t } = useI18n();
   const [tab, setTab] = useState<Tab>('continue');
 
-  const ids = tab === 'continue' ? continueListening() : tab === 'favorites' ? favorites() : completed();
+  const ids = useMemo(
+    () => (tab === 'continue' ? continueListening() : tab === 'favorites' ? favorites() : completed()),
+    [completed, continueListening, favorites, tab],
+  );
 
   const views = useMemo(
     () =>
@@ -43,38 +62,30 @@ export function MyBooksPage() {
 
   return (
     <div className="page">
-      <h1 className="page__title">My Books</h1>
-      <p className="page__subtitle">
-        Stored only on this device. OpenAudioBooks has no account system and never uploads your
-        listening data.
-      </p>
+      <h1 className="page__title">{t('myBooks.title')}</h1>
+      <p className="page__subtitle">{t('myBooks.description')}</p>
 
-      <div className="tabs" role="tablist" aria-label="My Books sections">
-        {(
-          [
-            ['continue', 'Continue listening'],
-            ['favorites', 'Favourites'],
-            ['finished', 'Finished'],
-          ] as const
-        ).map(([value, label]) => (
+      <div className="tabs" role="tablist" aria-label={t('myBooks.title')}>
+        {TABS.map((item) => (
           <button
-            key={value}
+            key={item.value}
             type="button"
             role="tab"
-            aria-selected={tab === value}
-            className={tab === value ? 'tab tab--active' : 'tab'}
-            onClick={() => setTab(value)}
+            aria-selected={tab === item.value}
+            className={tab === item.value ? 'tab tab--active' : 'tab'}
+            onClick={() => setTab(item.value)}
           >
-            {label}
+            {t(item.labelKey)}
           </button>
         ))}
       </div>
 
       {!ready ? (
-        <p className="notice">Reading local storage…</p>
+        <p className="notice">{t('myBooks.loading')}</p>
       ) : views.length === 0 ? (
         <p className="notice">
-          Nothing here yet. Start something from the <Link to="/search">search screen</Link>.
+          {t('myBooks.empty', { search: t('nav.search') })}{' '}
+          <Link to="/search">{t('nav.search')}</Link>
         </p>
       ) : (
         <div className="list">
@@ -97,7 +108,7 @@ export function MyBooksPage() {
                       className="button button--primary"
                       onClick={() => void player.play(view.edition.id)}
                     >
-                      {percent > 0 ? 'Resume' : 'Play'}
+                      {percent > 0 ? t('myBooks.resume') : t('myBooks.play')}
                     </button>
                   </div>
                 }
@@ -109,25 +120,23 @@ export function MyBooksPage() {
 
       <section className="section" aria-labelledby="privacy-heading">
         <h2 className="section__title" id="privacy-heading">
-          Local data
+          {t('myBooks.localData')}
         </h2>
         <p className="notice">
-          Playback positions, favourites, bookmarks and history are stored in this browser's
-          IndexedDB under <code>openaudiobooks</code>. Nothing is sent anywhere. Clearing your
-          browser data, or using the button below, removes it permanently.
+          {t('myBooks.localDataBody', { database: 'openaudiobooks' })}
         </p>
         <button
           type="button"
           className="button button--danger"
           onClick={() => {
-            if (globalThis.confirm?.('Delete all local OpenAudioBooks data on this device?')) {
+            if (globalThis.confirm?.(t('myBooks.deleteConfirm'))) {
               void clearAll();
             }
           }}
         >
-          Delete all local data
+          {t('myBooks.deleteAllData')}
         </button>
-        <p className="section__footnote">OpenAudioBooks {APP_VERSION} · alpha development build</p>
+        <p className="section__footnote">{t('myBooks.footer', { version: APP_VERSION })}</p>
       </section>
     </div>
   );

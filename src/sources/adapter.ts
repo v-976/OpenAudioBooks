@@ -40,7 +40,13 @@ export interface EditionBundle {
  * Implementations are expected to:
  *  - map their payloads into domain types, never leak native shapes;
  *  - report rights status honestly, defaulting to `unknown`;
- *  - return remote URLs only. Adapters must not download or re-host audio.
+ *  - return remote URLs only. Adapters must not download or re-host audio;
+ *  - NORMALISE LANGUAGE METADATA before exposing anything to the domain. Every
+ *    `AudioEdition.narrationLanguage` must pass through
+ *    `normalizeLanguageCode()` so provider values such as "Русский", "rus" or
+ *    "ru-RU" become a canonical identifier. `Work.originalLanguage` must never
+ *    be derived from an edition's narration language, and an unknown original
+ *    language must stay unknown rather than being guessed.
  */
 export interface SourceAdapter {
   /** Stable adapter key, also used as the namespace for ids. */

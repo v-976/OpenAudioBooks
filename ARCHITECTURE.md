@@ -1,6 +1,6 @@
 # OpenAudioBooks — Architecture
 
-Alpha 0.1.0. This document describes how the codebase is organised, why, and
+Alpha 0.1.1. This document describes how the codebase is organised, why, and
 where the seams are for the work that comes next.
 
 Read this before changing architecture, and read
@@ -18,7 +18,10 @@ Read this before changing architecture, and read
    server, no network writes.
 4. **Honest rights metadata.** "Free to listen" is not "public domain", and the
    data model says so.
-5. **Simple over clever.** A static frontend, a small dependency set, and
+5. **Multilingual by construction.** Interface language, work language and
+   narration language are three independent concepts. Russian is the initial
+   default, not a design constraint.
+6. **Simple over clever.** A static frontend, a small dependency set, and
    understandable code.
 
 ## 2. Layer map
@@ -28,11 +31,14 @@ Read this before changing architecture, and read
 │  UI          src/pages, src/components, src/app/AppShell  │
 │              reads contexts; never imports adapters       │
 ├──────────────────────────────────────────────────────────┤
+│  Localization src/i18n/*                                  │
+│              typed keys, locale bundles, plurals, t()     │
+├──────────────────────────────────────────────────────────┤
 │  Application src/app/*Provider, src/player/PlayerProvider │
 │              orchestration + context boundaries            │
 ├──────────────────────────────────────────────────────────┤
 │  Domain      src/domain/*                                  │
-│              entities, indexes, search, rights vocabulary  │
+│              entities, indexes, search, language, rights   │
 │              pure; no DOM, no storage, no provider names   │
 ├──────────────────────────────────────────────────────────┤
 │  Sources     src/sources/adapter.ts (contract),            │
@@ -44,8 +50,12 @@ Read this before changing architecture, and read
 ```
 
 Dependencies point downward only. `src/domain` imports nothing from `src/app`,
-`src/pages`, `src/sources` or `src/persistence`, which is what keeps the domain
-testable in isolation and keeps the Android client reusable.
+`src/pages`, `src/sources` or `src/persistence` — the single exception is a
+*type-only* import of translation keys in `rights.ts`, which carries no runtime
+coupling — which is what keeps the domain testable in isolation and keeps the
+Android client reusable. `src/i18n` depends only on `src/domain/language` and
+`src/i18n/keys`, so an Android client can reuse the domain without dragging a web
+translation layer along.
 
 ### Technology choices and why
 
@@ -78,8 +88,8 @@ collide. User-created records use a `user:` prefix.
 | `Narrator` | The performer | `id`, `name`, `biography?`, `imageUrl?`, `aliases[]` |
 | `Work` | The abstract literary work | `id`, `title`, `authorIds[]`, `description?`, `genres[]`, `originalLanguage?`, `series?` |
 | `Source` | Where audio comes from | `id`, `name`, `sourceUrl`, `sourceType`, `rightsStatus`, `licenseName?`, `licenseUrl?`, `attribution?`, `availabilityNotes?` |
-| `AudioEdition` | A concrete narrated recording | `id`, `workId`, `narratorIds[]`, `sourceId`, `language`, `releaseYear?`, `publisher?`, `coverUrl?`, `durationSeconds?`, **own** `rightsStatus`/`licenseName`/`licenseUrl`, `sourceUrl?`, `fetchedAt?` |
-| `Track` | A chapter | `id`, `audioEditionId`, `title`, `sequence`, `durationSeconds?`, `audioUrl`, `sourceUrl?` |
+| `AudioEdition` | A concrete narrated recording | `id`, `workId`, `narratorIds[]`, `sourceId`, **`narrationLanguage`**, `releaseYear?`, `publisher?`, `coverUrl?`, `durationSeconds?`, **own** `rightsStatus`/`licenseName`/`licenseUrl`, `sourceUrl?`, `fetchedAt?` |
+| `Track` | A chapter | `id`, `audioEditionId`, `title`, `sequence`, `durationSeconds?`, `audioUrl`, `sourceUrl?`, `narrationLanguage?` (override only) |
 | `UserState` | Local playback state | `audioEditionId`, `trackId`, `positionSeconds`, `lastPlayedAt`, `playbackRate`, `completed`, `favorite` |
 | `Bookmark` | A saved position | `id`, `audioEditionId`, `trackId`, `positionSeconds`, `createdAt`, `note?` |
 
@@ -98,11 +108,15 @@ Invariants that must hold:
 - An `AudioEdition` belongs to exactly one `Work` and one `Source`, and has one
   or more narrators (possibly many).
 - One `Work` may have many `AudioEdition`s. They are distinct listenings with
-  distinct narrators, sources, languages and rights.
+  distinct narrators, sources, **narration languages** and rights.
 - `UserState`, bookmarks and favourites key on `audioEditionId`, never on
   `workId`. Two editions of one work never share playback state.
-- `Work.originalLanguage` is the language of the text; `AudioEdition.language` is
-  the language of the recording. They are separate fields on purpose.
+- `Work.originalLanguage` is the language of the text;
+  `AudioEdition.narrationLanguage` is the language of the recording. They are
+  separate fields, `originalLanguage` is optional, and neither is ever derived
+  from the other. See §12.
+- A track's narration language is its edition's language unless the source
+  explicitly declared otherwise.
 
 ### Rights vocabulary
 
@@ -153,8 +167,11 @@ Rules an adapter must follow:
 3. Return **remote URLs only**. Never download, cache or re-host audio.
 4. Resolve narrators as first-class `Narrator` records, including aliases, so
    narrator browsing works from the moment data arrives.
-5. Namespace every id with the adapter's `source.id`.
-6. Return `{ unsupported: true }` rather than throwing when a provider genuinely
+5. **Normalise language metadata** through `normalizeLanguageCode()` before
+   setting `AudioEdition.narrationLanguage`, and never derive
+   `Work.originalLanguage` from it. Leave an unknown work language unknown.
+6. Namespace every id with the adapter's `source.id`.
+7. Return `{ unsupported: true }` rather than throwing when a provider genuinely
    cannot answer a query.
 
 `AdapterRegistry` (`src/sources/adapter.ts`) holds the enabled adapters.
@@ -170,13 +187,15 @@ To add a provider: implement the interface, register it in `createRegistry()` in
 `src/domain/search.ts` builds a `CatalogueIndex` (maps for works, authors,
 narrators, sources, and reverse indexes: editions by work, narrator, author,
 source and genre; tracks by edition). `searchEditions()` takes explicit facets
-and combines them, which is what makes `author + narrator`, `genre + narrator` and
-`source + narrator` work without special-casing:
+and combines them, which is what makes `author + narrator`, `genre + narrator`,
+`source + narrator` and every one of those combined with a narration language work
+without special-casing:
 
 ```ts
 searchEditions(index, { authorIds: [...], narratorIds: [...] })
 searchEditions(index, { genre: 'Historical', narratorIds: [...] })
 searchEditions(index, { sourceIds: [...], narratorIds: [...] })
+searchEditions(index, { narratorIds: [...], narrationLanguages: ['ru'] })
 ```
 
 Free-text search matches titles, descriptions, genres, series, author names,
@@ -196,11 +215,12 @@ Database `openaudiobooks`, currently version 1:
 | `history` | `id` | `audioEditionId`, `playedAt` |
 | `meta` | `key` | — |
 
-**localStorage** (`src/persistence/preferencesRepository.ts`) for four scalars:
-playback rate and skip intervals, plus a last-played pointer. Needed
-synchronously before first paint, and not personal data. Values are clamped on
-read, and a corrupted or unavailable store falls back to defaults rather than
-breaking startup.
+**localStorage** (`src/persistence/preferencesRepository.ts`) for a handful of
+scalars: playback rate, skip intervals, the last-played pointer, and the two
+language preferences. Needed synchronously before first paint, and not personal
+data. Values are clamped on read, and a corrupted or unavailable store falls back
+to defaults rather than breaking startup. See §12 for the 0.1.0 → 0.1.1 data
+impact.
 
 ### Migrations
 
@@ -307,6 +327,7 @@ Routes (`src/app/AppRoutes.tsx`):
 | `/search` | Search with facet filters |
 | `/now-playing` | Transport, track list, bookmarks |
 | `/my-books` | Continue listening, favourites, finished, local-data controls |
+| `/settings` | Interface language, audiobook languages, local-data info |
 | `/browse/:kind` | Narrator / author / source index (`narrators`, `authors`, `sources`) |
 | `/narrators/:narratorId` | Narrator detail with all narrated editions |
 | `/authors/:authorId` | Author detail |
@@ -321,22 +342,31 @@ drives the real provider stack and the real media element, which is how
 cross-restart resume is verified rather than asserted.
 
 Entity ids contain colons, so route segments are `encodeURIComponent`-encoded and
-decoded on read.
+decoded on read. Route paths and ids are **not** localised: they stay stable
+English identifiers so deep links and the Android client keep working regardless
+of interface language.
 
 Touch targets are 44px minimum. Focus is visible. Colours come from CSS custom
 properties with a light and dark scheme. Visual polish was intentionally
-deprioritised this phase; `prefers-reduced-motion` is respected.
+deprioritised; `prefers-reduced-motion` is respected.
 
 ## 8. Development data
 
 `src/data/devCatalogue.ts` ships a small fictional catalogue, all ids prefixed
-`dev:` and all URLs on the reserved `example.invalid` domain. It demonstrates:
+`dev:` and all URLs on the reserved `example.invalid` domain. Since 0.1.1 it is
+built to demonstrate the language architecture rather than English-first
+browsing:
 
-- 5 authors, 5 works, 5 narrators, 4 sources, 7 audio editions, 17 tracks
-- one work with **two** audio editions narrated by **different** narrators from
-  **different** sources
-- one narrator appearing across several works and sources, for narrator browsing
-- one edition per language (`en`, `de`, `no`) and a series with two books
+- 7 authors, 7 works, 7 narrators, 4 sources, 12 audio editions, 27 tracks
+- **`Тайна маяка`**: `originalLanguage: 'en'` with Russian, English *and* Finnish
+  editions, each narrated by a different narrator. This is the proof that work
+  language ≠ narration language and that one work spans several languages.
+- **`Тихая книга`**: no `originalLanguage` at all, with Russian and German
+  editions — "unknown" is a valid state.
+- **`Тихая гавань`**: `originalLanguage: 'fi'` with Russian *and* Finnish
+  editions — the mismatch in the opposite direction.
+- one narrator appearing across several works, sources and languages
+- a two-book series, and editions in `ru`, `en`, `fi`, `de`
 - all four non-public-domain rights states, including a deliberate `unknown`
 
 `DevCatalogueAdapter` implements the same `SourceAdapter` contract as a real
@@ -371,14 +401,18 @@ limitations are documented in the README.
 
 Android is not started. The architecture was chosen with it in mind:
 
-**Directly reusable.** `src/domain/*`, `src/persistence/*` (the repository
-functions take an `IDBDatabase`; a React Native SQLite adapter could implement
-the same repository interfaces), `src/sources/*` (adapters are plain async
-functions), and `src/player/playerMachine.ts` (pure functions).
+**Directly reusable.** `src/domain/*` (including `language.ts`, so an Android
+client gets the same normalisation and language filtering rules),
+`src/persistence/*` (the repository functions take an `IDBDatabase`; a React
+Native SQLite adapter could implement the same repository interfaces),
+`src/sources/*` (adapters are plain async functions), and
+`src/player/playerMachine.ts` (pure functions).
 
 **Needs replacing.** `PlayerProvider` (React Native uses `react-native-track-player`
 or ExoPlayer/Media3 with a background service), routing
-(`@react-navigation/native`), styling, and the service worker.
+(`@react-navigation/native`), styling, the service worker, and `src/i18n/*` —
+a native client would use its own platform localization while reusing the
+`LanguageCode` vocabulary from the domain.
 
 **Keep the boundaries.** An Android app should depend on `domain` and
 `sources/adapter`, never on `app/*Provider`, `player/PlayerProvider` or anything
@@ -393,14 +427,167 @@ Android can reuse it. It must remain free of DOM APIs and free of telemetry.
 
 | To do this | Do it here |
 | --- | --- |
-| Add a real provider | New file in `src/sources/`, register in `CatalogueProvider.createRegistry()` |
+| Add a real provider | New file in `src/sources/`, register in `CatalogueProvider.createRegistry()`, normalise language metadata with `normalizeLanguageCode()` |
 | Add a field to the domain | `src/domain/types.ts`, plus a read migration if persisted |
 | Add a screen | `src/pages/`, then add a route in `AppRoutes.tsx` |
 | Change search | `src/domain/search.ts` only |
+| Change catalogue language filtering | `src/app/catalogueLanguage.ts` and `searchEditions` |
+| Change the wording of any string | `src/i18n/keys.ts` (add a key + translation), never a component |
+| Add a UI language | `src/i18n/` bundle + `PLURAL_RULES` + `TRANSLATED_UI_LOCALES` |
+| Add a catalogue language | `LANGUAGES` in `src/domain/language.ts` + `LANGUAGE_NAMES` in `src/i18n/index.ts` |
 | Change resume/skip behaviour | `src/player/playerMachine.ts` only |
 | Change what is stored | A new migration in `src/persistence/db.ts` with a `dataImpact` note |
 
-## 12. Explicit non-goals for this phase
+## 12. Language architecture
+
+Added in Alpha 0.1.1. This is the part most likely to be broken by accident,
+because conflating any two of these fields looks entirely reasonable.
+
+### Three concepts, three homes
+
+```
+Preferences.uiLocale              → which language the interface is rendered in
+Work.originalLanguage (optional)  → the language a work was written in
+AudioEdition.narrationLanguage    → the language actually spoken in the audio
+```
+
+`src/domain/language.ts` owns normalised identifiers and nothing else. It never
+infers one concept from another and never expresses a user preference.
+
+`normalizeLanguageCode()` is the single normalisation point for anything entering
+the domain:
+
+| Input | Result |
+| --- | --- |
+| `ru`, `RU`, `  ru  ` | `ru` |
+| `ru-RU`, `ru_RU` | `ru` |
+| `rus` (ISO 639-2/3) | `ru` |
+| `Russian`, `Русский` | `ru` |
+| `eo` (unknown, well-formed) | `eo` — carried through, not dropped |
+| `42`, `''`, `'!!!'` | `undefined` — nothing usable |
+
+Provider-specific mapping is deliberately **not** implemented. A future adapter
+adds a mapping for its own codes and then calls `normalizeLanguageCode()`.
+
+`Track.narrationLanguage` is an override that normally does not exist;
+`trackNarrationLanguage(track, edition)` is the only place the
+track-inherits-from-edition fallback lives, so callers cannot invent a third
+interpretation.
+
+### Preferences
+
+```ts
+interface Preferences {
+  playbackRate: number;
+  skipForwardSeconds: number;
+  skipBackwardSeconds: number;
+  lastAudioEditionId?: string;
+  uiLocale: string;                  // interface language
+  preferredAudioLanguages: string[]; // narration languages, user-ordered
+}
+```
+
+Defaults for this milestone: `uiLocale: 'ru'`, `preferredAudioLanguages: ['ru']`.
+Both are shapes that need no redesign for more languages: the locale is a
+normalised tag, the audiobook languages are a list.
+
+The two are written by different code and never by the same call. `SettingsPage`
+calls `updatePreferences({ uiLocale })` and `languageFilter.toggle(code)` (which
+calls `updatePreferences({ preferredAudioLanguages })`) separately, and there is
+no derived-value path between them.
+
+An **empty** `preferredAudioLanguages` array is a legitimate stored value meaning
+"no restriction", not "no results". `searchEditions` treats an omitted list and an
+empty list identically: no language filter.
+
+### Catalogue filtering
+
+`src/app/catalogueLanguage.ts` is the single place the preference becomes a query:
+
+```ts
+const languageFilter = useCatalogueLanguageFilter();
+const views = useFilteredEditions({ narratorIds: [narrator.id] });
+```
+
+`apply()` merges `preferredAudioLanguages` into any existing facet set, so all of
+these work without special-casing:
+
+```ts
+searchEditions(index, { narratorIds: [...], narrationLanguages: ['ru'] });
+searchEditions(index, { authorIds: [...],   narrationLanguages: ['ru'] });
+searchEditions(index, { genre: '...',       narrationLanguages: ['ru'] });
+searchEditions(index, { sourceIds: [...],   narrationLanguages: ['ru'] });
+```
+
+Screens that list catalogue audio editions (Library, Search, Work, Narrator,
+Author, Source) all go through this hook. **My Books deliberately does not**: it
+lists what the user actually listened to, and hiding a book because they later
+changed a catalogue filter would silently lose their own history.
+
+Browse index counts (narrators, authors, sources, genres) describe the whole
+catalogue rather than the filtered view, so a filtered-to-zero narrator never
+looks like a narrator who does not exist.
+
+`Work.originalLanguage` is never used as a filter. It is display-only.
+
+### Localization
+
+`src/i18n/` is a dependency-free layer:
+
+| File | Role |
+| --- | --- |
+| `keys.ts` | The key set, derived from the Russian catalogue, plus value types |
+| `ru.ts` | The complete Russian bundle |
+| `en.ts` | A deliberately **incomplete** English bundle |
+| `index.ts` | Fallback chain, plural rules, interpolation, language names |
+| `i18nContext.ts` | Context object and `useI18n()` |
+| `I18nProvider.tsx` | The provider component |
+
+Design points:
+
+- **Typed keys.** `TranslationKey` is `keyof typeof ru`, so adding a Russian
+  string automatically makes it required in every other locale and a typo is a
+  compile error. Components cannot invent a key.
+- **Fallback chain.** Requested locale → `FALLBACK_UI_LOCALE` (Russian) → the key
+  itself. `en.ts` exists partly so that this path is exercised by tests rather
+  than only in theory.
+- **Honest completeness.** `isLocaleComplete()` compares a bundle against the
+  key set, and `selectableUiLocales()` offers only complete translations. English
+  audio exists in the catalogue but English UI is not offered, because it is not
+  finished.
+- **Plurals.** `TranslationValue` may be a map of CLDR plural categories, and
+  `PLURAL_RULES` chooses the form per locale. Russian one/few/many matters here:
+  "1 аудиоиздание", "2 аудиокниги", "5 аудиокниг" would be visibly wrong with an
+  English `s` suffix.
+- **Language display names.** `languageName(code, uiLocale)` returns "Русский" /
+  "Английский" / "Финский". Raw codes are for storage and queries; the
+  interface falls back to the English name for an unknown code rather than
+  showing an error.
+- **Code stays English.** Keys, identifiers, type names, route paths and URLs are
+  English. Only values are translated. `<html lang>` and the manifest `lang`
+  describe the shipped default; the runtime locale lives in preferences.
+
+### Migration / data impact, 0.1.0 → 0.1.1
+
+| | |
+| --- | --- |
+| IndexedDB schema | **Unchanged.** `DB_VERSION` stays 1, no migration entry added |
+| IndexedDB user data | Untouched: playback positions, bookmarks, favourites and history all survive |
+| localStorage preferences | Same key `openaudiobooks.preferences.v1`; two fields **added** |
+| `uiLocale` absent | Filled with `ru` at read time |
+| `preferredAudioLanguages` absent | Filled with `['ru']` at read time |
+| `preferredAudioLanguages: []` | Preserved as `[]` ("no restriction"), not restored to the default |
+| Unusable language values | Replaced by normalised defaults rather than trusted |
+| `AudioEdition.language` → `narrationLanguage` | Renamed domain field. Not persisted, so no stored data is affected |
+| `EditionFilters.language` → `narrationLanguages[]` | Widened from one value to a list; call sites updated |
+
+There is deliberately **no** IndexedDB migration: preferences live in
+localStorage, not in the database schema, so nothing persisted changed shape in a
+way that requires a version bump. A test seeds a literal Alpha 0.1.0 preferences
+record and asserts every original field survives while the new fields receive
+defaults.
+
+## 13. Explicit non-goals for this phase
 
 No backend. No accounts. No cloud sync. No scraping. No Android client. No real
 provider integration. No analytics, telemetry or third-party services. No

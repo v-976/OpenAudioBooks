@@ -6,9 +6,11 @@ import { usePlayer } from '../player/playerContext';
 import {
   authorsForWork,
   editionsForWork,
-  viewForEdition,
+  type EditionFilters,
   type EditionView,
 } from '../domain/search';
+import { useFilteredEditions } from '../app/catalogueLanguage';
+import { useI18n } from '../i18n/i18nContext';
 import { NotFound } from './NotFound';
 
 /**
@@ -16,44 +18,52 @@ import { NotFound } from './NotFound';
  *
  * A work is the abstract literary entity; all concrete recordings live under it
  * as audio editions. This page deliberately shows one work with several
- * narrators/sources when that is the case.
+ * narrators, sources and languages when that is the case.
+ *
+ * Editions are filtered by the user's audiobook-language preference, while the
+ * work's own original language is displayed separately and never derived from
+ * those editions.
  */
 export function WorkPage() {
   const { workId = '' } = useParams();
   const { index } = useCatalogue();
   const player = usePlayer();
+  const { t, languageName } = useI18n();
 
   const work = index.worksById.get(decodeURIComponent(workId));
   const authors = useMemo(() => (work ? authorsForWork(index, work.id) : []), [index, work]);
-  const editions = useMemo(() => (work ? editionsForWork(index, work.id) : []), [index, work]);
-  const views = useMemo(
-    () =>
-      editions
-        .map((edition) => viewForEdition(index, edition.id))
-        .filter((view): view is EditionView => Boolean(view)),
-    [editions, index],
+  const allEditions = useMemo(() => (work ? editionsForWork(index, work.id) : []), [index, work]);
+
+  // Only the edition LISTING honours the audiobook-language preference, and it
+  // does so through the shared filter rather than a rule re-implemented here. The
+  // work's own original language is shown independently of that preference.
+  const filters = useMemo<EditionFilters>(() => ({}), []);
+  const languageFiltered = useFilteredEditions(filters);
+  const views = useMemo<EditionView[]>(
+    () => languageFiltered.filter((view) => view.work.id === work?.id),
+    [languageFiltered, work],
   );
+  const hiddenByLanguage = allEditions.length - views.length;
 
   if (!work) {
     return (
-      <NotFound
-        title="Work not found"
-        body="This work is not in the local catalogue. Provider integration has not been implemented yet, so the catalogue currently contains development fixtures only."
-      />
+      <NotFound title={t('work.notFound')} body={t('work.notFoundBody')} />
     );
   }
 
+  const editionLanguages = [...new Set(views.map((view) => view.edition.narrationLanguage))];
+
   return (
     <div className="page">
-      <nav className="breadcrumb" aria-label="Breadcrumb">
-        <Link to="/">Library</Link> <span aria-hidden="true">/</span> <Link to="/search">Search</Link>
+      <nav className="breadcrumb" aria-label="breadcrumb">
+        <Link to="/">{t('nav.library')}</Link> <Link to="/search">{t('nav.search')}</Link>
       </nav>
 
       <h1 className="page__title">{work.title}</h1>
       <p className="page__subtitle">
-        {authors.map((author, index) => (
+        {authors.map((author, position) => (
           <span key={author.id}>
-            {index > 0 ? ', ' : ''}
+            {position > 0 ? ', ' : ''}
             <Link to={`/authors/${encodeURIComponent(author.id)}`}>{author.name}</Link>
           </span>
         ))}
@@ -61,13 +71,26 @@ export function WorkPage() {
 
       {work.series ? (
         <p className="page__meta">
-          Series: {work.series.name}
-          {work.series.position ? `, book ${work.series.position}` : ''}
+          <span className="page__meta-label">{t('common.series')}: </span>
+          <span className="page__meta-value">
+            {work.series.name}
+            {work.series.position
+              ? ', ' + t('common.bookInSeries', { position: work.series.position })
+              : ''}
+          </span>
         </p>
       ) : null}
-      {work.originalLanguage ? (
-        <p className="page__meta">Original language: {work.originalLanguage.toUpperCase()}</p>
-      ) : null}
+      {/*
+        Original language is shown only when the source stated it. It is never
+        inferred from an edition's narration language, and its absence is a valid
+        state rather than something to fill in.
+      */}
+      <p className="page__meta">
+        <span className="page__meta-label">{t('common.originalLanguage')}: </span>
+        <span className="page__meta-value">
+          {work.originalLanguage ? languageName(work.originalLanguage) : t('common.notSpecified')}
+        </span>
+      </p>
 
       {work.description ? <p className="prose">{work.description}</p> : null}
 
@@ -85,10 +108,10 @@ export function WorkPage() {
 
       <section className="section" aria-labelledby="work-editions">
         <h2 className="section__title" id="work-editions">
-          Audio editions ({editions.length})
+          {t('work.editionsCount', undefined, views.length)}
         </h2>
         {views.length === 0 ? (
-          <p className="notice">No audio editions of this work are known yet.</p>
+          <p className="notice">{t('work.noEditions')}</p>
         ) : (
           <div className="list">
             {views.map((view) => (
@@ -101,13 +124,26 @@ export function WorkPage() {
                     className="button button--primary"
                     onClick={() => void player.play(view.edition.id)}
                   >
-                    Play
+                    {t('player.play')}
                   </button>
                 }
               />
             ))}
           </div>
         )}
+        {editionLanguages.length > 0 ? (
+          <p className="section__footnote">
+            <span className="page__meta-label">{t('search.field.narrationLanguage')}: </span>
+            <span className="page__meta-value">
+              {editionLanguages.map((code) => languageName(code)).join(', ')}
+            </span>
+          </p>
+        ) : null}
+        {hiddenByLanguage > 0 ? (
+          <p className="section__footnote">
+            {t('work.hiddenByLanguage', undefined, hiddenByLanguage)}
+          </p>
+        ) : null}
       </section>
     </div>
   );

@@ -7,20 +7,24 @@ import { useResumeTarget } from '../player/useResumeTarget';
 import { totalDurationSeconds, viewForEdition } from '../domain/search';
 import { formatDuration } from '../player/playerMachine';
 import { RightsBadge } from '../components/RightsBadge';
-import { rightsLabel } from '../domain/rights';
+import { rightsKey } from '../domain/rights';
+import { useI18n } from '../i18n/i18nContext';
 import { NotFound } from './NotFound';
 
 /**
  * Audio edition detail.
  *
  * This is the level playback state belongs to: two editions of the same work
- * keep entirely separate positions, bookmarks and favourites.
+ * keep entirely separate positions, bookmarks and favourites. The narration
+ * language is shown alongside the work's original language precisely so the two
+ * are never confused.
  */
 export function EditionPage() {
   const { editionId = '' } = useParams();
   const { index } = useCatalogue();
   const player = usePlayer();
   const { stateFor } = useUserData();
+  const { t, languageName } = useI18n();
   const decoded = decodeURIComponent(editionId);
 
   const view = useMemo(() => viewForEdition(index, decoded), [decoded, index]);
@@ -28,12 +32,7 @@ export function EditionPage() {
   const state = stateFor(decoded);
 
   if (!view) {
-    return (
-      <NotFound
-        title="Audio edition not found"
-        body="This audio edition is not in the local catalogue. Real provider data has not been integrated yet."
-      />
-    );
+    return <NotFound title={t('edition.notFound')} body={t('edition.notFoundBody')} />;
   }
 
   const { edition, work, authors, narrators, source, tracks } = view;
@@ -44,46 +43,50 @@ export function EditionPage() {
 
   return (
     <div className="page">
-      <nav className="breadcrumb" aria-label="Breadcrumb">
-        <Link to="/">Library</Link> <span aria-hidden="true">/</span>{' '}
+      <nav className="breadcrumb" aria-label="breadcrumb">
+        <Link to="/">{t('nav.library')}</Link>{' '}
         <Link to={`/works/${encodeURIComponent(work.id)}`}>{work.title}</Link>
       </nav>
 
       <h1 className="page__title">{work.title}</h1>
       <p className="page__subtitle">
-        {authors.map((author, index) => (
+        {authors.map((author, position) => (
           <span key={author.id}>
-            {index > 0 ? ', ' : ''}
+            {position > 0 ? ', ' : ''}
             <Link to={`/authors/${encodeURIComponent(author.id)}`}>{author.name}</Link>
           </span>
         ))}
       </p>
 
       <dl className="detail-list">
-        <dt>Narrator</dt>
+        <dt>{t('common.narrator')}</dt>
         <dd>
           {narrators.length > 0
-            ? narrators.map((narrator, index) => (
+            ? narrators.map((narrator, position) => (
                 <span key={narrator.id}>
-                  {index > 0 ? ', ' : ''}
+                  {position > 0 ? ', ' : ''}
                   <Link to={`/narrators/${encodeURIComponent(narrator.id)}`}>{narrator.name}</Link>
                 </span>
               ))
-            : 'Unknown narrator'}
+            : t('common.unnamedNarrator')}
         </dd>
 
-        <dt>Language</dt>
-        <dd>{edition.language.toUpperCase()}</dd>
+        <dt>{t('search.field.narrationLanguage')}</dt>
+        <dd>{languageName(edition.narrationLanguage)}</dd>
 
-        <dt>Duration</dt>
+        <dt>{t('common.originalLanguage')}</dt>
+        <dd>{work.originalLanguage ? languageName(work.originalLanguage) : t('common.notSpecified')}</dd>
+
+        <dt>{t('common.duration')}</dt>
         <dd>{formatDuration(duration)}</dd>
 
-        <dt>Release</dt>
+        <dt>{t('common.release')}</dt>
         <dd>
-          {[edition.releaseYear, edition.publisher].filter(Boolean).join(' · ') || 'Not reported'}
+          {[edition.releaseYear, edition.publisher].filter(Boolean).join(' · ') ||
+            t('common.notSpecified')}
         </dd>
 
-        <dt>Source</dt>
+        <dt>{t('common.source')}</dt>
         <dd>
           {source ? (
             <>
@@ -92,17 +95,17 @@ export function EditionPage() {
                 <>
                   {' · '}
                   <a href={edition.sourceUrl} target="_blank" rel="noreferrer noopener">
-                    Original page
+                    {t('common.originalSource')}
                   </a>
                 </>
               ) : null}
             </>
           ) : (
-            'Unknown'
+            t('common.unknown')
           )}
         </dd>
 
-        <dt>Rights</dt>
+        <dt>{t('common.rights')}</dt>
         <dd>
           <RightsBadge status={edition.rightsStatus} />
           {edition.licenseName ? <span> {edition.licenseName}</span> : null}
@@ -110,21 +113,18 @@ export function EditionPage() {
             <>
               {' · '}
               <a href={edition.licenseUrl} target="_blank" rel="noreferrer noopener">
-                Licence terms
+                {t('rights.creativeCommons')}
               </a>
             </>
           ) : null}
           {edition.rightsStatus === 'unknown' ? (
-            <p className="notice notice--warning">
-              The source has not stated the rights status for this edition. Free to listen does
-              not mean public domain.
-            </p>
+            <p className="notice notice--warning">{t('edition.rightsUnknownWarning')}</p>
           ) : null}
         </dd>
 
         {source?.attribution ? (
           <>
-            <dt>Attribution</dt>
+            <dt>{t('common.attribution')}</dt>
             <dd>{source.attribution}</dd>
           </>
         ) : null}
@@ -140,41 +140,44 @@ export function EditionPage() {
             void player.play(edition.id, tracks[0]?.id, 0)
           }
         >
-          Play from start
+          {t('edition.playFromStart')}
         </button>
         {resume && state && state.positionSeconds > 0 ? (
           <button
             type="button"
             className="button button--large"
-            onClick={() =>
-              void player.play(edition.id, resume.trackId, resume.offsetSeconds)
-            }
+            onClick={() => void player.play(edition.id, resume.trackId, resume.offsetSeconds)}
           >
-            Resume at {formatDuration(resume.offsetSeconds)}
+            {t('edition.resumeAt', { time: formatDuration(resume.offsetSeconds) })}
           </button>
         ) : null}
       </div>
 
       {state ? (
         <p className="page__meta">
-          Last played {state.lastPlayedAt.slice(0, 16).replace('T', ' ')} ·{' '}
-          {state.completed ? 'finished' : 'in progress'} ·{' '}
-          {state.favorite ? 'favourited' : 'not favourited'}
+          {t('edition.lastPlayed', { date: state.lastPlayedAt.slice(0, 16).replace('T', ' ') })} ·{' '}
+          {state.completed
+            ? t('edition.state.finished')
+            : t('edition.state.inProgress')}{' '}
+          ·{' '}
+          {state.favorite
+            ? t('edition.state.favorite')
+            : t('edition.state.notFavorite')}
         </p>
       ) : (
-        <p className="page__meta">Not started yet. Progress is saved on this device only.</p>
+        <p className="page__meta">{t('edition.notStarted')}</p>
       )}
 
       {work.description ? (
         <section className="section">
-          <h2 className="section__title">About this work</h2>
+          <h2 className="section__title">{t('work.about')}</h2>
           <p className="prose">{work.description}</p>
         </section>
       ) : null}
 
       <section className="section" aria-labelledby="edition-tracks">
         <h2 className="section__title" id="edition-tracks">
-          Tracks ({tracks.length})
+          {t('common.tracks')} ({tracks.length})
         </h2>
         <ol className="track-list">
           {tracks.map((track) => (
@@ -186,7 +189,9 @@ export function EditionPage() {
               >
                 <span className="track-list__sequence">{track.sequence}</span>
                 <span className="track-list__title">{track.title}</span>
-                <span className="track-list__duration">{formatDuration(track.durationSeconds)}</span>
+                <span className="track-list__duration">
+                  {formatDuration(track.durationSeconds)}
+                </span>
               </button>
               {track.sourceUrl ? (
                 <a
@@ -195,7 +200,7 @@ export function EditionPage() {
                   target="_blank"
                   rel="noreferrer noopener"
                 >
-                  source
+                  {t('common.source')}
                 </a>
               ) : null}
             </li>
@@ -206,7 +211,7 @@ export function EditionPage() {
       {otherEditions.length > 0 ? (
         <section className="section" aria-labelledby="other-editions">
           <h2 className="section__title" id="other-editions">
-            Other editions of this work
+            {t('edition.otherEditions')}
           </h2>
           <ul className="plain-list">
             {otherEditions.map((item) => {
@@ -216,26 +221,28 @@ export function EditionPage() {
               return (
                 <li key={item.id} className="plain-list__item plain-list__item--row">
                   <Link to={`/editions/${encodeURIComponent(item.id)}`}>
-                    {itemView.narrators.map((narrator) => narrator.name).join(', ') || 'Unknown narrator'}{' '}
-                    · {item.language.toUpperCase()} · {rightsLabel(item.rightsStatus)}
+                    {itemView.narrators.map((narrator) => narrator.name).join(', ') ||
+                      t('common.unnamedNarrator')}
+                    {' · '}
+                    {languageName(item.narrationLanguage)} · {t(rightsKey(item.rightsStatus))}
                   </Link>
                   <span className="plain-list__meta">
-                    {itemState?.positionSeconds ? 'has saved progress' : 'not started'}
+                    {itemState?.positionSeconds
+                      ? t('edition.hasSavedProgress')
+                      : t('edition.notStartedYet')}
                   </span>
                   <button
                     type="button"
                     className="button button--primary"
                     onClick={() => void player.play(item.id)}
                   >
-                    Play
+                    {t('player.play')}
                   </button>
                 </li>
               );
             })}
           </ul>
-          <p className="section__footnote">
-            Each edition keeps its own playback position, bookmarks and favourite status.
-          </p>
+          <p className="section__footnote">{t('edition.otherEditionsNote')}</p>
         </section>
       ) : null}
     </div>

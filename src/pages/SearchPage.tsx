@@ -3,32 +3,48 @@ import { useSearchParams } from 'react-router-dom';
 import { EditionCard } from '../components/EditionCard';
 import { useCatalogue } from '../app/catalogueContext';
 import { usePlayer } from '../player/playerContext';
-import {
-  allGenres,
-  allLanguages,
-  searchEditions,
-  type EditionView,
-} from '../domain/search';
+import { useCatalogueLanguageFilter } from '../app/catalogueLanguage';
+import { allGenres, searchEditions, type EditionView } from '../domain/search';
+import { useI18n } from '../i18n/i18nContext';
+import type { LanguageCode } from '../domain/language';
+import { normalizeLanguageCode } from '../domain/language';
 
 /**
  * Search / discovery.
  *
- * Facets are explicit so that `author + narrator`, `genre + narrator` and
- * `source + narrator` combinations all work, which is a hard requirement for a
- * narrator-centric catalogue.
+ * Facets are explicit so that `narrator + language`, `author + language`,
+ * `genre + language` and `source + language` all work, which is a hard
+ * requirement for a narrator-centric, multilingual catalogue.
+ *
+ * The language facet filters on `AudioEdition.narrationLanguage` only. The
+ * interface language is never involved.
  */
 export function SearchPage() {
   const { index } = useCatalogue();
   const player = usePlayer();
+  const { t, languageName } = useI18n();
+  const languageFilter = useCatalogueLanguageFilter();
   const [params, setParams] = useSearchParams();
 
   const text = params.get('q') ?? '';
   const narratorId = params.get('narrator') ?? '';
   const authorId = params.get('author') ?? '';
   const genre = params.get('genre') ?? '';
-  const language = params.get('language') ?? '';
   const sourceId = params.get('source') ?? '';
   const series = params.get('series') ?? '';
+
+  // The URL may carry a language facet for shareable links. It is applied on top
+  // of the stored preference rather than replacing it, so the URL and the
+  // preference cannot silently disagree with what the user chose.
+  const urlLanguages = useMemo(
+    () =>
+      (params.get('lang') ?? '')
+        .split(',')
+        .map((value) => normalizeLanguageCode(value))
+        .filter((code): code is LanguageCode => Boolean(code)),
+    [params],
+  );
+  const effectiveLanguages = urlLanguages.length > 0 ? urlLanguages : languageFilter.selected;
 
   const [textDraft, setTextDraft] = useState(text);
 
@@ -46,11 +62,11 @@ export function SearchPage() {
         ...(narratorId ? { narratorIds: [narratorId] } : {}),
         ...(authorId ? { authorIds: [authorId] } : {}),
         ...(genre ? { genre } : {}),
-        ...(language ? { language } : {}),
         ...(sourceId ? { sourceIds: [sourceId] } : {}),
         ...(series ? { series } : {}),
+        ...(effectiveLanguages.length > 0 ? { narrationLanguages: effectiveLanguages } : {}),
       }),
-    [index, text, narratorId, authorId, genre, language, sourceId, series],
+    [authorId, effectiveLanguages, genre, index, narratorId, series, sourceId, text],
   );
 
   const narrators = useMemo(
@@ -73,17 +89,25 @@ export function SearchPage() {
     return [...names].sort();
   }, [index]);
 
+  const languageOptions = useMemo(() => {
+    const known = ['ru', 'en', 'fi'];
+    for (const code of languageFilter.available) {
+      if (!known.includes(code)) known.push(code);
+    }
+    return known;
+  }, [languageFilter.available]);
+
   const clearAll = () => {
     setTextDraft('');
     setParams(new URLSearchParams(), { replace: true });
   };
 
   const hasFilters =
-    Boolean(text || narratorId || authorId || genre || language || sourceId || series);
+    Boolean(text || narratorId || authorId || genre || sourceId || series || effectiveLanguages.length);
 
   return (
     <div className="page">
-      <h1 className="page__title">Search</h1>
+      <h1 className="page__title">{t('search.title')}</h1>
 
       <form
         className="search-form"
@@ -94,29 +118,29 @@ export function SearchPage() {
         role="search"
       >
         <label className="field">
-          <span className="field__label">Title, author, narrator, track…</span>
+          <span className="field__label">{t('search.field.text')}</span>
           <input
             className="field__input"
             type="search"
             value={textDraft}
             onChange={(event) => setTextDraft(event.target.value)}
-            placeholder="Search the catalogue"
+            placeholder={t('search.placeholder')}
           />
         </label>
         <button type="submit" className="button button--primary">
-          Search
+          {t('search.submit')}
         </button>
       </form>
 
       <div className="filters">
         <label className="field">
-          <span className="field__label">Narrator</span>
+          <span className="field__label">{t('search.field.narrator')}</span>
           <select
             className="field__input"
             value={narratorId}
             onChange={(event) => update('narrator', event.target.value)}
           >
-            <option value="">Any narrator</option>
+            <option value="">{t('search.any.narrator')}</option>
             {narrators.map((narrator) => (
               <option key={narrator.id} value={narrator.id}>
                 {narrator.name}
@@ -126,13 +150,13 @@ export function SearchPage() {
         </label>
 
         <label className="field">
-          <span className="field__label">Author</span>
+          <span className="field__label">{t('search.field.author')}</span>
           <select
             className="field__input"
             value={authorId}
             onChange={(event) => update('author', event.target.value)}
           >
-            <option value="">Any author</option>
+            <option value="">{t('search.any.author')}</option>
             {authors.map((author) => (
               <option key={author.id} value={author.id}>
                 {author.name}
@@ -142,13 +166,13 @@ export function SearchPage() {
         </label>
 
         <label className="field">
-          <span className="field__label">Genre</span>
+          <span className="field__label">{t('search.field.genre')}</span>
           <select
             className="field__input"
             value={genre}
             onChange={(event) => update('genre', event.target.value)}
           >
-            <option value="">Any genre</option>
+            <option value="">{t('search.any.genre')}</option>
             {allGenres(index).map((item) => (
               <option key={item} value={item}>
                 {item}
@@ -158,29 +182,13 @@ export function SearchPage() {
         </label>
 
         <label className="field">
-          <span className="field__label">Language</span>
-          <select
-            className="field__input"
-            value={language}
-            onChange={(event) => update('language', event.target.value)}
-          >
-            <option value="">Any language</option>
-            {allLanguages(index).map((item) => (
-              <option key={item} value={item}>
-                {item.toUpperCase()}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        <label className="field">
-          <span className="field__label">Source</span>
+          <span className="field__label">{t('search.field.source')}</span>
           <select
             className="field__input"
             value={sourceId}
             onChange={(event) => update('source', event.target.value)}
           >
-            <option value="">Any source</option>
+            <option value="">{t('search.any.source')}</option>
             {sources.map((source) => (
               <option key={source.id} value={source.id}>
                 {source.name}
@@ -190,13 +198,13 @@ export function SearchPage() {
         </label>
 
         <label className="field">
-          <span className="field__label">Series</span>
+          <span className="field__label">{t('search.field.series')}</span>
           <select
             className="field__input"
             value={series}
             onChange={(event) => update('series', event.target.value)}
           >
-            <option value="">Any series</option>
+            <option value="">{t('search.any.series')}</option>
             {seriesNames.map((item) => (
               <option key={item} value={item}>
                 {item}
@@ -204,21 +212,53 @@ export function SearchPage() {
             ))}
           </select>
         </label>
+
+        {/*
+          Language facet. It narrows the existing results without changing the
+          stored preference, so a visitor with a link can explore another
+          language and the user still owns their default.
+        */}
+        <label className="field">
+          <span className="field__label">{t('search.field.narrationLanguage')}</span>
+          <select
+            className="field__input"
+            value={
+              effectiveLanguages.length === 1
+                ? effectiveLanguages[0]
+                : effectiveLanguages.length === 0
+                  ? ''
+                  : 'multiple'
+            }
+            onChange={(event) =>
+              update('lang', event.target.value === 'multiple' ? '' : event.target.value)
+            }
+          >
+            <option value="">{t('search.any.narrationLanguage')}</option>
+            {effectiveLanguages.length > 1 ? (
+              <option value="multiple">{t('search.any.narrationLanguage')}</option>
+            ) : null}
+            {languageOptions.map((code) => (
+              <option key={code} value={code}>
+                {languageName(code)}
+              </option>
+            ))}
+          </select>
+        </label>
       </div>
 
+      <p className="notice notice--info">{t('search.languageNotice')}</p>
+
       <div className="results-header">
-        <h2 className="section__title">
-          {results.length} audio edition{results.length === 1 ? '' : 's'}
-        </h2>
+        <h2 className="section__title">{t('search.resultsCount', undefined, results.length)}</h2>
         {hasFilters ? (
           <button type="button" className="button button--ghost" onClick={clearAll}>
-            Clear filters
+            {t('common.clearFilters')}
           </button>
         ) : null}
       </div>
 
       {results.length === 0 ? (
-        <p className="notice">No audio editions match these filters.</p>
+        <p className="notice">{t('search.noResults')}</p>
       ) : (
         <div className="list">
           {results.map((view: EditionView) => (
@@ -231,7 +271,7 @@ export function SearchPage() {
                   className="button button--primary"
                   onClick={() => void player.play(view.edition.id)}
                 >
-                  Play
+                  {t('player.play')}
                 </button>
               }
             />

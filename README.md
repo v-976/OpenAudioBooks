@@ -1,6 +1,6 @@
 # OpenAudioBooks
 
-**Alpha 0.1.0 — development build. Not production-ready. No real audiobooks are
+**Alpha 0.1.1 — development build. Not production-ready. No real audiobooks are
 available in this build yet.**
 
 OpenAudioBooks is a free, public, **non-commercial** application for discovering,
@@ -18,16 +18,50 @@ audio edition carries its own rights, attribution and licence information.
 
 | | |
 | --- | --- |
-| Version | 0.1.0 (Alpha) |
+| Version | 0.1.1 (Alpha) |
+| Interface language | Russian (complete). English/Finnish interface translations are **not** finished and are not offered |
+| Preferred audiobook language | Russian, adjustable per device to any of the languages in the catalogue |
 | Client | Progressive Web App, mobile-first for iPhone Safari, works in modern desktop browsers |
 | Real providers | **None integrated yet.** The catalogue shows bundled, clearly-marked development fixtures |
 | Android | Not started. Planned after the web client is stable |
 | Accounts | None, by design |
 
-This phase delivered the project foundation: the domain model, the source-adapter
-architecture, the local-first persistence layer, the playback persistence
-architecture, and a functional UI skeleton. Provider integration is deliberately
-the next milestone, not this one.
+This milestone corrected and extended the language model before any real
+catalogue ingestion begins. The Alpha 0.1.0 foundation — domain model, source
+adapters, local-first persistence, playback resume, PWA — is unchanged and its
+tests still pass. Real provider integration remains deliberately out of scope.
+
+## Languages: three separate concepts
+
+OpenAudioBooks is **not** a Russian-only application. It is a multilingual
+catalogue with a multilingual interface, and this milestone sets the initial
+user-facing configuration to Russian.
+
+Three concepts exist, and the code keeps them apart on purpose:
+
+| Concept | Where it lives | Question it answers |
+| --- | --- | --- |
+| **Interface language** | `Preferences.uiLocale` | What language is the UI rendered in? |
+| **Work language** | `Work.originalLanguage` (optional) | What language was the book written in? |
+| **Narration language** | `AudioEdition.narrationLanguage` | What language is actually spoken in the audio? |
+
+They are independent settings and are never derived from one another. A Ray
+Bradbury novel can have a Russian narration, an English narration and a Finnish
+narration, all attached to the **same** Work, because identity matching is
+reliable — and all three remain separate audio editions with their own narrators,
+sources, rights and playback state.
+
+Consequences that are visible in the interface:
+
+- The catalogue language filter matches **narration language only**. It never
+  filters on work language, title language, author nationality or source country.
+- Changing the audiobook languages never changes the interface language, and the
+  interface language never decides which audio you see.
+- The default view shows Russian-narrated audio. A Finnish narrator who only has
+  Finnish recordings correctly appears to a Russian-only listener as having
+  nothing to offer here.
+- A work whose original language the source does not state shows "не указано".
+  Unknown is a valid state; it is never guessed from an edition.
 
 ## Privacy and local-first design
 
@@ -79,6 +113,22 @@ WORK  "Salt and Lanterns"
 **Playback progress belongs to the audio edition**, so progress, bookmarks and
 favourites for the two editions above are completely independent.
 
+## Interface language
+
+The user interface is in Russian in this milestone. Settings exposes:
+
+- **Язык интерфейса** — currently Русский, the only complete translation.
+- **Языки аудиокниг** — Русский, Английский, Финский, … multi-select.
+
+Both live in `/settings` and are stored separately on the device. The interface
+says plainly that only the Russian translation is complete; it does not pretend
+English or Finnish localisation is finished.
+
+The localization layer (`src/i18n/`) holds typed keys, one complete locale plus a
+deliberately partial English bundle that exercises the fallback chain, CLDR-style
+Russian plural rules, and localised language names ("Русский", not "ru"). No
+localization dependency was added.
+
 ## Planned sources
 
 Not integrated in this phase. Each will be added as a source adapter behind one
@@ -118,10 +168,12 @@ behaviour; `npm run dev` skips service-worker registration by design.
 
 ### Tests
 
-70 tests covering the domain model and narrator faceting, resume/skip/completion
-maths, IndexedDB persistence (including cross-restart behaviour and migration
-bookkeeping), and screen rendering for narrator, work, edition and source pages.
-They run in jsdom with an in-memory IndexedDB and make no network requests.
+148 tests covering the domain model and narrator faceting, language
+normalisation and filtering, localization fallback and Russian plurals,
+resume/skip/completion maths, IndexedDB persistence (including cross-restart
+behaviour and migration bookkeeping), and screen rendering for narrator, work,
+edition, source and settings pages. They run in jsdom with an in-memory IndexedDB
+and make no network requests.
 
 ## PWA notes and known limitations
 

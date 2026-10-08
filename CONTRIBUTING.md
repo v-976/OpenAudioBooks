@@ -35,10 +35,23 @@ These are not style preferences. Changes that break them will not be merged.
    permitting redistribution *and* explicit project-owner approval.
 9. **Provider logic lives in source adapters**, never in UI components.
 10. **Domain entities must not depend on a provider**, a DOM API, or React.
-11. **No unrelated refactors.** Keep changes scoped to the task.
-12. **Preserve stored user data** when you can, and document migration impact
+11. **The three language concepts stay independent.** Interface language, work
+    original language and audio narration language are different things. The UI
+    language must not determine which catalogue audio is shown, and a narration
+    language must never be written into a work's original language.
+12. **Catalogue language filtering uses narration language only.** Never filter on
+    work language, title language, author nationality or source country.
+13. **All user-facing strings go through the localization layer.** Add a typed key
+    and its translation; do not hard-code text in components. Code identifiers,
+    type names, routes and URLs stay English.
+14. **Russian is the current default, not a permanent restriction.** Nothing may
+    assume it is the only possible value.
+15. **Adapters normalise provider language values** through
+    `normalizeLanguageCode()` before exposing an audio edition.
+16. **No unrelated refactors.** Keep changes scoped to the task.
+17. **Preserve stored user data** when you can, and document migration impact
     before changing a persisted schema.
-13. **No secrets.** No API keys, tokens or credentials, ever.
+18. **No secrets.** No API keys, tokens or credentials, ever.
 
 ## Development setup
 
@@ -75,6 +88,11 @@ All four must pass. `npm run check` is the same command CI should run.
 | Add a source provider | New file in `src/sources/`; register in `src/app/CatalogueProvider.tsx` |
 | Add or change a domain entity | `src/domain/types.ts` |
 | Change search or faceting | `src/domain/search.ts` |
+| Change catalogue language filtering | `src/app/catalogueLanguage.ts` |
+| Change the wording of a string, or add one | `src/i18n/keys.ts` (key + translation), never a component |
+| Add a UI language | `src/i18n/` bundle, `PLURAL_RULES`, `TRANSLATED_UI_LOCALES` |
+| Add a catalogue language | `LANGUAGES` in `src/domain/language.ts`, `LANGUAGE_NAMES` in `src/i18n/index.ts` |
+| Change language normalisation | `src/domain/language.ts` |
 | Change resume, skip or progress maths | `src/player/playerMachine.ts` |
 | Change what is persisted | New migration in `src/persistence/db.ts` |
 | Add a screen | `src/pages/`, then a route in `src/app/AppRoutes.tsx` |
@@ -91,6 +109,8 @@ Write tests for anything that touches:
 - resume, skip and progress behaviour
 - persistence, including a simulated restart and migration paths
 - rights and attribution rendering
+- language normalisation, filtering and the independence of the three language concepts
+- localization fallback and plural forms
 
 A persistence change without a reopen test is not done: closing the app and
 coming back is the actual requirement.
@@ -110,14 +130,31 @@ Every dependency must be added to
 1. Implement `SourceAdapter` (`src/sources/adapter.ts`).
 2. Map into domain types only. Narrators must resolve to `Narrator` records
    with aliases.
-3. Report rights honestly, defaulting to `unknown`. Do not classify MDS or any
+3. Normalise every language value through `normalizeLanguageCode()`. Set
+   `AudioEdition.narrationLanguage` from the spoken audio language; leave
+   `Work.originalLanguage` unknown unless the source states it.
+4. Report rights honestly, defaulting to `unknown`. Do not classify MDS or any
    other free-to-listen content as public domain without a source that says so.
-4. Return remote URLs. Do not download or cache audio files.
-5. Namespace ids with your `source.id`.
-6. Register in `createRegistry()`.
-7. Add tests for the mapping, and add the provider's licence to
+5. Return remote URLs. Do not download or cache audio files.
+6. Namespace ids with your `source.id`.
+7. Register in `createRegistry()`.
+8. Add tests for the mapping, and add the provider's licence to
    `THIRD_PARTY_NOTICES.md`.
-8. Do not modify UI components to accommodate the provider.
+9. Do not modify UI components to accommodate the provider.
+
+## Adding a language
+
+Two different jobs, two different places:
+
+- **A language of audio** (a new narration language in the catalogue): add it to
+  `LANGUAGES` in `src/domain/language.ts` and to `LANGUAGE_NAMES` in
+  `src/i18n/index.ts` so the interface can name it.
+- **A language of interface**: add a bundle in `src/i18n/`, its plural rules, and
+  its entry in `TRANSLATED_UI_LOCALES` — but only once the translation is
+  complete, because `selectableUiLocales()` offers only complete locales and the
+  Settings screen states which are unfinished.
+
+Neither job touches the other, and neither derives from `uiLocale`.
 
 ## Commit and PR hygiene
 
@@ -130,10 +167,11 @@ Every dependency must be added to
 
 ## Development data
 
-`src/data/devCatalogue.ts` is fictional fixture data on `example.invalid`. Do not
-replace it with real audiobook metadata without a working adapter. Do not add
-real cover images or audio files to the repository. Never mix fixture data into
-a release build.
+`src/data/devCatalogue.ts` is fictional fixture data on `example.invalid`, in
+Russian and other languages, designed to exercise the narrator and language
+architecture. Do not replace it with real audiobook metadata without a working
+adapter. Do not add real cover images or audio files to the repository. Never mix
+fixture data into a release build.
 
 ## Licensing of contributions
 

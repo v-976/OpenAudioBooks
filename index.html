@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="ru">
   <head>
     <meta charset="UTF-8" />
     <!-- viewport-fit=cover + safe-area insets in CSS for notched iPhones -->
@@ -10,15 +10,22 @@
     <meta name="color-scheme" content="dark light" />
     <meta name="theme-color" content="#181a2b" />
 
-    <title>OpenAudioBooks 0.1.0 (alpha)</title>
+    <title>OpenAudioBooks 0.1.1 (альфа)</title>
     <meta
       name="description"
-      content="OpenAudioBooks alpha: a free, public, non-commercial catalogue and player for audiobooks that are legally free to listen to from external sources. Development build."
+      content="OpenAudioBooks — бесплатное, публичное, некоммерческое приложение-каталог и плеер аудиокниг, которые законно можно слушать бесплатно с внешних источников. Альфа-сборка."
     />
 
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="icon" href="/icons/icon-192.png" type="image/png" />
     <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+
+    <!--
+      The interface language is a runtime user preference, not a build-time
+      document attribute: the page is rendered in the locale the user selected,
+      starting from Russian. Only the pre-rendered metadata below is fixed, and
+      it is written in Russian to match the default interface.
+    -->
 
     <!-- iOS-friendly metadata: installable to the home screen, standalone window. -->
     <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -36,7 +43,7 @@
   <body>
     <div id="root"></div>
     <noscript>
-      OpenAudioBooks requires JavaScript for local playback and catalogue browsing.
+      Для локального воспроизведения и работы с каталогом OpenAudioBooks требуется JavaScript.
     </noscript>
     <script type="module" src="/src/main.tsx"></script>
   </body>

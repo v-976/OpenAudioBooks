@@ -176,9 +176,18 @@ export interface EditionFilters {
   authorIds?: string[];
   narratorIds?: string[];
   genre?: string;
-  language?: string;
   sourceIds?: string[];
   series?: string;
+  /**
+   * Narration languages to include, matched against
+   * `AudioEdition.narrationLanguage` ONLY.
+   *
+   * An empty or omitted list means "do not filter by language", which is
+   * different from a list that happens to contain nothing: the caller decides
+   * when language filtering applies, so an empty user preference can be
+   * rendered as "no restriction" rather than "no results".
+   */
+  narrationLanguages?: string[];
 }
 
 /**
@@ -192,7 +201,9 @@ export function searchEditions(index: CatalogueIndex, filters: EditionFilters): 
   const authorIds = filters.authorIds ?? [];
   const narratorIds = filters.narratorIds ?? [];
   const sourceIds = filters.sourceIds ?? [];
-  const language = filters.language?.trim().toLowerCase();
+  // Filtered on narration language only. Never on Work.originalLanguage, title
+  // language, author nationality or source country.
+  const narrationLanguages = filters.narrationLanguages ?? [];
   const genre = filters.genre?.trim().toLowerCase();
   const series = filters.series?.trim().toLowerCase();
 
@@ -207,7 +218,9 @@ export function searchEditions(index: CatalogueIndex, filters: EditionFilters): 
       if (!narratorIds.some((id) => edition.narratorIds.includes(id))) continue;
     }
     if (sourceIds.length > 0 && !sourceIds.includes(edition.sourceId)) continue;
-    if (language && edition.language.toLowerCase() !== language) continue;
+    if (narrationLanguages.length > 0 && !narrationLanguages.includes(edition.narrationLanguage)) {
+      continue;
+    }
 
     const work = index.worksById.get(edition.workId);
     if (!work) continue;
@@ -228,7 +241,7 @@ export function searchEditions(index: CatalogueIndex, filters: EditionFilters): 
 
   return results.sort((a, b) =>
     a.work.title.localeCompare(b.work.title) ||
-    a.edition.language.localeCompare(b.edition.language),
+    a.edition.narrationLanguage.localeCompare(b.edition.narrationLanguage),
   );
 }
 
@@ -258,9 +271,26 @@ export function allGenres(index: CatalogueIndex): string[] {
   return [...genres].sort((a, b) => a.localeCompare(b));
 }
 
-/** All distinct languages across the catalogue, sorted. */
-export function allLanguages(index: CatalogueIndex): string[] {
+/**
+ * Distinct narration languages present in the catalogue, sorted.
+ *
+ * Derived from `AudioEdition.narrationLanguage`, so this is a property of the
+ * audio a user can actually listen to, not of the works or the authors.
+ */
+export function availableNarrationLanguages(index: CatalogueIndex): string[] {
   const languages = new Set<string>();
-  for (const edition of index.catalogue.audioEditions) languages.add(edition.language);
+  for (const edition of index.catalogue.audioEditions) {
+    languages.add(edition.narrationLanguage);
+  }
   return [...languages].sort((a, b) => a.localeCompare(b));
+}
+
+/** Number of audio editions available in a given narration language. */
+export function editionsInNarrationLanguage(
+  index: CatalogueIndex,
+  languageCode: string,
+): AudioEdition[] {
+  return index.catalogue.audioEditions.filter(
+    (edition) => edition.narrationLanguage === languageCode,
+  );
 }

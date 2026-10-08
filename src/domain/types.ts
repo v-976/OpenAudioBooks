@@ -12,13 +12,14 @@
  *  - Playback progress belongs to an AudioEdition, never to a Work.
  */
 
+import type { LanguageCode } from './language';
+
 export type EntityId = string;
 
 /** ISO-8601 timestamp string. */
 export type Timestamp = string;
 
-/** BCP-47-ish language tag, e.g. `en`, `ru`, `de`. */
-export type LanguageCode = string;
+export type { LanguageCode };
 
 export interface Author {
   id: EntityId;
@@ -39,7 +40,13 @@ export interface Work {
   authorIds: EntityId[];
   description?: string;
   genres: string[];
-  /** Language of the original text of the work, when known. */
+  /**
+   * Language the work was originally written in, when the source states it.
+   *
+   * Optional on purpose, and NEVER inferred from an audio edition's narration
+   * language: a Russian narration of an English novel keeps `originalLanguage`
+   * as `en`, and a work of unknown original language simply omits this field.
+   */
   originalLanguage?: LanguageCode;
   series?: Series;
   metadata?: Record<string, string>;
@@ -97,7 +104,14 @@ export interface AudioEdition {
   workId: EntityId;
   narratorIds: EntityId[];
   sourceId: EntityId;
-  language: LanguageCode;
+  /**
+   * The language actually spoken in this recording, as a normalised identifier.
+   *
+   * This is the narration language, not the work's original language, and not
+   * the interface language. Catalogue language filtering operates on this field
+   * and nothing else. Adapters must normalise provider values before setting it.
+   */
+  narrationLanguage: LanguageCode;
   /** Release/publication information as reported by the source. */
   releaseYear?: number;
   publisher?: string;
@@ -132,6 +146,23 @@ export interface Track {
   audioUrl: string;
   /** Page on the source describing this track. */
   sourceUrl?: string;
+  /**
+   * Overrides the edition's narration language for this track.
+   *
+   * Normally absent: a track is in the same language as the edition it belongs
+   * to. It exists only for the genuine multi-language case (a polyglot recording,
+   * or one chapter in another language) which a source may explicitly declare.
+   */
+  narrationLanguage?: LanguageCode;
+}
+
+/**
+ * Effective narration language of a track: its own override when declared,
+ * otherwise the edition's language. This is the only place that fallback rule
+ * lives, so callers cannot accidentally invent a third interpretation.
+ */
+export function trackNarrationLanguage(track: Track, edition: AudioEdition): LanguageCode {
+  return track.narrationLanguage ?? edition.narrationLanguage;
 }
 
 /**
@@ -166,19 +197,47 @@ export interface Bookmark {
   note?: string;
 }
 
-/** Small, non-identifying preferences. Stored in localStorage by design. */
+/**
+ * Small, non-identifying preferences. Stored in localStorage by design.
+ *
+ * `uiLocale` and `preferredAudioLanguages` are INDEPENDENT settings and are
+ * stored independently:
+ *  - `uiLocale` decides the language the interface is rendered in.
+ *  - `preferredAudioLanguages` decides which narration languages appear in the
+ *    catalogue, filtered on `AudioEdition.narrationLanguage`.
+ *
+ * Changing one must never change the other (AGENTS.md rule: language concepts).
+ */
 export interface Preferences {
   playbackRate: number;
   skipForwardSeconds: number;
   skipBackwardSeconds: number;
   /** Remembered as an explicit "continue listening" target. */
   lastAudioEditionId?: EntityId;
+  /** Interface language, as a normalised locale code. */
+  uiLocale: LanguageCode;
+  /**
+   * Narration languages the user wants to see, in the user's own order.
+   *
+   * A list, not a single value, so adding a second language needs no schema
+   * change. Never derived from `uiLocale`.
+   */
+  preferredAudioLanguages: LanguageCode[];
 }
 
+/**
+ * Initial defaults.
+ *
+ * Russian is the starting configuration for this project, not a permanent
+ * restriction: the shapes here are lists/strings precisely so that later
+ * languages need no redesign.
+ */
 export const DEFAULT_PREFERENCES: Preferences = {
   playbackRate: 1,
   skipForwardSeconds: 30,
   skipBackwardSeconds: 15,
+  uiLocale: 'ru',
+  preferredAudioLanguages: ['ru'],
 };
 
 /**

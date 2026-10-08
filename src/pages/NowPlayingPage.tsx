@@ -7,6 +7,8 @@ import { elapsedBeforeTrack, formatDuration } from '../player/playerMachine';
 import { findEditionView } from '../domain/search';
 import { EditionCard } from '../components/EditionCard';
 import { RightsBadge } from '../components/RightsBadge';
+import { useI18n } from '../i18n/i18nContext';
+import type { TranslationKey } from '../i18n/keys';
 
 const RATES = [0.75, 1, 1.25, 1.5, 1.75, 2, 2.5, 3];
 
@@ -14,8 +16,9 @@ const RATES = [0.75, 1, 1.25, 1.5, 1.75, 2, 2.5, 3];
 export function NowPlayingPage() {
   const player = usePlayer();
   const { index } = useCatalogue();
-  const { bookmarksFor, addBookmark, removeBookmark, stateFor, toggleFavorite, preferences } =
+  const { bookmarksFor, addBookmark, removeBookmark, stateFor, toggleFavorite, preferences, continueListening } =
     useUserData();
+  const { t, languageName } = useI18n();
   const [noteDraft, setNoteDraft] = useState('');
 
   const current = player.current;
@@ -37,17 +40,23 @@ export function NowPlayingPage() {
 
   if (!current || !view || !work) {
     // Nothing loaded yet. Offer the last thing played, which is the same
-    // "Continue listening" promise the rest of the app makes.
-    const lastId = preferences.lastAudioEditionId;
+    // "Continue listening" promise the rest of the app makes. The pointer in
+    // preferences is only a shortcut: if it is missing or stale, fall back to the
+    // most recently played edition from the local store.
+    const lastId = preferences.lastAudioEditionId ?? continueListening()[0];
     const lastView = lastId ? findEditionView(index, lastId) : undefined;
     const lastState = lastId ? stateFor(lastId) : undefined;
+    const lastTrackTitle = lastState?.trackId
+      ? index.tracksByEditionId.get(lastId ?? '')?.find((track) => track.id === lastState.trackId)
+          ?.title
+      : undefined;
 
     return (
       <div className="page">
-        <h1 className="page__title">Now Playing</h1>
+        <h1 className="page__title">{t('player.emptyTitle')}</h1>
         {lastView ? (
           <section className="section">
-            <h2 className="section__title">Continue listening</h2>
+            <h2 className="section__title">{t('library.continueListening')}</h2>
             <EditionCard
               view={lastView}
               trailing={
@@ -56,21 +65,22 @@ export function NowPlayingPage() {
                   className="button button--primary"
                   onClick={() => void player.play(lastView.edition.id)}
                 >
-                  Resume
-                </button>
+                  {t('edition.resumeAt', { time: formatDuration(lastState?.positionSeconds ?? 0) })}                </button>
               }
             />
             {lastState && lastState.positionSeconds > 0 ? (
               <p className="section__footnote">
-                Saved on this device at {formatDuration(lastState.positionSeconds)} into{' '}
-                {lastState.trackId}.
+                {t('player.resumeSavedNote', {
+                  time: formatDuration(lastState.positionSeconds),
+                  track: lastTrackTitle ?? lastState.trackId,
+                })}
               </p>
             ) : null}
           </section>
         ) : null}
         <p className="notice">
-          Nothing is loaded. Choose an audio edition from the{' '}
-          <Link to="/search">search screen</Link> to start listening.
+          {t('player.emptyBody', { search: t('nav.search') })}{' '}
+          <Link to="/search">{t('nav.search')}</Link>
         </p>
       </div>
     );
@@ -86,6 +96,8 @@ export function NowPlayingPage() {
     if (Number.isFinite(next)) player.seekTo(next);
   };
 
+  const playPauseKey: TranslationKey = player.playing ? 'player.pause' : 'player.play';
+
   return (
     <div className="page">
       <h1 className="page__title">{work.title}</h1>
@@ -99,15 +111,19 @@ export function NowPlayingPage() {
       <div className="now-playing">
         <p className="now-playing__track">{current.track.title}</p>
         <p className="now-playing__narrators">
-          <span className="label">Narrated by</span>{' '}
+          <span className="label">{t('common.narratedBy')} </span>
           {narrators.length > 0
-            ? narrators.map((narrator, index_) => (
+            ? narrators.map((narrator, position) => (
                 <span key={narrator!.id}>
-                  {index_ > 0 ? ', ' : ''}
+                  {position > 0 ? ', ' : ''}
                   <Link to={`/narrators/${encodeURIComponent(narrator!.id)}`}>{narrator!.name}</Link>
                 </span>
               ))
-            : 'Unknown narrator'}
+            : t('common.unnamedNarrator')}
+        </p>
+        <p className="now-playing__language">
+          <span className="label">{t('search.field.narrationLanguage')}: </span>
+          {languageName(current.edition.narrationLanguage)}
         </p>
 
         {player.error ? (
@@ -118,7 +134,7 @@ export function NowPlayingPage() {
 
         <div className="progress">
           <label className="field">
-            <span className="field__label">Position</span>
+            <span className="field__label">{t('player.position')}</span>
             <input
               className="progress__slider"
               type="range"
@@ -127,7 +143,7 @@ export function NowPlayingPage() {
               step={1}
               value={Math.round(player.positionSeconds)}
               onChange={(event) => onSeekInput(event.target.value)}
-              aria-label="Seek within current track"
+              aria-label={t('player.seekWithinTrack')}
             />
           </label>
           <p className="progress__times">
@@ -135,17 +151,20 @@ export function NowPlayingPage() {
             <span>{formatDuration(player.durationSeconds)}</span>
           </p>
           <p className="progress__edition">
-            Edition progress {formatDuration(editionElapsed)} / {formatDuration(editionTotal)} (
-            {Math.round(player.editionProgress * 100)}%)
+            {t('player.editionProgress', {
+              current: formatDuration(editionElapsed),
+              total: formatDuration(editionTotal),
+              percent: Math.round(player.editionProgress * 100),
+            })}
           </p>
         </div>
 
-        <div className="transport" role="group" aria-label="Playback controls">
+        <div className="transport" role="group" aria-label={t('player.play')}>
           <button
             type="button"
             className="button"
             onClick={() => void player.previousTrack()}
-            aria-label="Previous track"
+            aria-label={t('player.previousTrack')}
           >
             ⏮
           </button>
@@ -153,7 +172,7 @@ export function NowPlayingPage() {
             type="button"
             className="button"
             onClick={() => player.skipBackward()}
-            aria-label={`Skip back ${player.skipSeconds.backward} seconds`}
+            aria-label={t('player.skipBack', { seconds: player.skipSeconds.backward })}
           >
             ↺
           </button>
@@ -161,15 +180,15 @@ export function NowPlayingPage() {
             type="button"
             className="button button--primary button--large"
             onClick={() => void player.toggle()}
-            aria-label={player.playing ? 'Pause' : 'Play'}
+            aria-label={t(playPauseKey)}
           >
-            {player.playing ? '❚❚ Pause' : '▶ Play'}
+            {player.playing ? `❚❚ ${t('player.pause')}` : `▶ ${t('player.play')}`}
           </button>
           <button
             type="button"
             className="button"
             onClick={() => player.skipForward()}
-            aria-label={`Skip forward ${player.skipSeconds.forward} seconds`}
+            aria-label={t('player.skipForward', { seconds: player.skipSeconds.forward })}
           >
             ↻
           </button>
@@ -177,7 +196,7 @@ export function NowPlayingPage() {
             type="button"
             className="button"
             onClick={() => void player.nextTrack()}
-            aria-label="Next track"
+            aria-label={t('player.nextTrack')}
           >
             ⏭
           </button>
@@ -185,10 +204,11 @@ export function NowPlayingPage() {
 
         <div className="transport__extras">
           <label className="field field--inline">
-            <span className="field__label">Speed</span>
+            <span className="field__label">{t('player.speed')}</span>
             <select
               className="field__input"
               value={player.playbackRate}
+              aria-label={t('player.speed')}
               onChange={(event) => void player.setPlaybackRate(Number(event.target.value))}
             >
               {RATES.map((rate) => (
@@ -211,7 +231,7 @@ export function NowPlayingPage() {
               })
             }
           >
-            Bookmark here
+            {t('player.bookmarkHere')}
           </button>
 
           <button
@@ -219,7 +239,9 @@ export function NowPlayingPage() {
             className="button"
             onClick={() => void toggleFavorite(current.edition.id)}
           >
-            {state?.favorite ? '★ Favourited' : '☆ Favourite'}
+            {state?.favorite
+              ? `★ ${t('player.favoriteRemove')}`
+              : `☆ ${t('player.favoriteAdd')}`}
           </button>
         </div>
 
@@ -228,13 +250,13 @@ export function NowPlayingPage() {
           {view.licenseName ? <span> {view.licenseName}</span> : null}
           {source ? (
             <p className="now-playing__source">
-              Source:{' '}
+              {t('common.source')}:{' '}
               <Link to={`/sources/${encodeURIComponent(source.id)}`}>{source.name}</Link>
               {view.sourceUrl ? (
                 <>
                   {' · '}
                   <a href={view.sourceUrl} target="_blank" rel="noreferrer noopener">
-                    Original page
+                    {t('common.originalSource')}
                   </a>
                 </>
               ) : null}
@@ -248,13 +270,18 @@ export function NowPlayingPage() {
 
       <section className="section" aria-labelledby="tracks-heading">
         <h2 className="section__title" id="tracks-heading">
-          Tracks
+          {t('common.tracks')}
         </h2>
         <ol className="track-list">
           {tracks.map((track) => {
             const active = track.id === current.track.id;
             return (
-              <li key={track.id} className={active ? 'track-list__item track-list__item--active' : 'track-list__item'}>
+              <li
+                key={track.id}
+                className={
+                  active ? 'track-list__item track-list__item--active' : 'track-list__item'
+                }
+              >
                 <button
                   type="button"
                   className="track-list__button"
@@ -275,10 +302,10 @@ export function NowPlayingPage() {
 
       <section className="section" aria-labelledby="bookmarks-heading">
         <h2 className="section__title" id="bookmarks-heading">
-          Bookmarks
+          {t('bookmarks.title')}
         </h2>
         <label className="field">
-          <span className="field__label">Note for next bookmark (optional)</span>
+          <span className="field__label">{t('bookmarks.noteLabel')}</span>
           <input
             className="field__input"
             type="text"
@@ -288,7 +315,7 @@ export function NowPlayingPage() {
           />
         </label>
         {bookmarks.length === 0 ? (
-          <p className="notice">No bookmarks yet for this audio edition.</p>
+          <p className="notice">{t('bookmarks.empty')}</p>
         ) : (
           <ul className="plain-list">
             {bookmarks.map((bookmark) => (
@@ -301,14 +328,14 @@ export function NowPlayingPage() {
                   {formatDuration(bookmark.positionSeconds)}
                 </button>
                 <span className="plain-list__meta">
-                  {bookmark.note ?? 'No note'} · {bookmark.createdAt.slice(0, 10)}
+                  {bookmark.note ?? t('bookmarks.noNote')} · {bookmark.createdAt.slice(0, 10)}
                 </span>
                 <button
                   type="button"
                   className="button button--ghost"
                   onClick={() => void removeBookmark(bookmark.id)}
                 >
-                  Remove
+                  {t('bookmarks.remove')}
                 </button>
               </li>
             ))}
