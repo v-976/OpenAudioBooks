@@ -66,11 +66,21 @@ export class LibriVoxAdapter implements SourceAdapter {
 
   private async scan(params: Parameters<typeof scanProjects>[0]): Promise<ScanResult> {
     const scanFn = this.options.scan ?? scanProjects;
-    const result = await scanFn(params, {
-      maxPages: this.options.maxPages ?? 3,
-      ...(this.options.pageSize === undefined ? {} : { limit: this.options.pageSize }),
-      ...(this.options.timeoutMs === undefined ? {} : { timeoutMs: this.options.timeoutMs }),
-    });
+    const result = await scanFn(
+      {
+        ...params,
+        // `sections[]` (the real chapter queue and MP3 URLs) is returned only
+        // for an extended request. Without this flag the catalogue has cards
+        // and editions but no tracks, so pressing "Listen" can do nothing.
+        extended: true,
+        coverart: true,
+      },
+      {
+        maxPages: this.options.maxPages ?? 3,
+        ...(this.options.pageSize === undefined ? {} : { limit: this.options.pageSize }),
+        ...(this.options.timeoutMs === undefined ? {} : { timeoutMs: this.options.timeoutMs }),
+      },
+    );
     this.lastScan = result;
     return result;
   }
@@ -96,7 +106,13 @@ export class LibriVoxAdapter implements SourceAdapter {
     }
 
     const cached = await readCachedProjects();
-    if (cached.length > 0) {
+    // Alpha 0.2.0 originally cached the non-extended response. Those records
+    // have cards but no `sections` property and therefore cannot be played.
+    // Treat that cache shape as incomplete and replace it with an extended
+    // response. A legitimate extended response may contain an empty sections
+    // array, so presence (not length) is the compatibility check.
+    const cacheHasSections = cached.every((record) => Array.isArray(record.project.sections));
+    if (cached.length > 0 && cacheHasSections) {
       this.lastScan = {
         projects: cached.map((record) => record.project),
         pages: 0,

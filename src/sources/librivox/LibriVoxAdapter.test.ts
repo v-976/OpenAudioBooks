@@ -16,6 +16,7 @@ import {
   clearProviderCache,
   isCacheStale,
   readCachedProjects,
+  writeCachedProjects,
 } from '../../persistence/catalogueCacheRepository';
 
 /**
@@ -90,6 +91,22 @@ describe('catalogueFrom', () => {
 });
 
 describe('loadCatalogue', () => {
+  it('requests extended projects so the catalogue contains real chapters and MP3 URLs', async () => {
+    const scan = stubScan([RUSSIAN_PROJECT]);
+    const adapter = new LibriVoxAdapter({ scan, maxPages: 1 });
+
+    const catalogue = await adapter.loadCatalogue();
+
+    expect(scan).toHaveBeenCalledWith(
+      expect.objectContaining({ extended: true, coverart: true }),
+      expect.any(Object),
+    );
+    expect(catalogue.tracks).toHaveLength(3);
+    expect(catalogue.tracks[0].audioUrl).toBe(
+      'https://www.archive.org/download/notes_underground_russian/01-dostoevsky-zapiski-iz-podpolya-I-01-02_64kb.mp3',
+    );
+  });
+
   it('fetches once on a cold start and caches the result', async () => {
     const scan = stubScan();
     const adapter = new LibriVoxAdapter({ scan, maxPages: 1 });
@@ -111,6 +128,26 @@ describe('loadCatalogue', () => {
     await adapter.loadCatalogue();
     await adapter.loadCatalogue({ refresh: true });
     expect(scan).toHaveBeenCalledTimes(2);
+  });
+
+  it('replaces the broken Alpha 0.2.0 cache shape that omitted sections', async () => {
+    const brokenProject = { ...RUSSIAN_PROJECT };
+    delete brokenProject.sections;
+    await writeCachedProjects([
+      {
+        id: String(brokenProject.id),
+        project: brokenProject,
+        fetchedAt: '2026-10-08T00:00:00.000Z',
+      },
+    ]);
+    const scan = stubScan([RUSSIAN_PROJECT]);
+    const adapter = new LibriVoxAdapter({ scan, maxPages: 1 });
+
+    const catalogue = await adapter.loadCatalogue();
+
+    expect(scan).toHaveBeenCalledTimes(1);
+    expect(catalogue.tracks).toHaveLength(3);
+    expect((await readCachedProjects())[0].project.sections).toHaveLength(3);
   });
 
   it('shares one in-flight scan between concurrent callers', async () => {

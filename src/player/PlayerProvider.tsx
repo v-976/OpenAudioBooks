@@ -20,6 +20,7 @@ import {
   resolveResumeTarget,
 } from './playerMachine';
 import { PlayerContext, type PlayerContextValue } from './playerContext';
+import { useI18n } from '../i18n/i18nContext';
 
 /** How often an in-flight position is written to local storage. */
 const PROGRESS_SAVE_INTERVAL_MS = 4000;
@@ -39,6 +40,7 @@ const PROGRESS_SAVE_INTERVAL_MS = 4000;
 export function PlayerProvider({ children }: { children: ReactNode }) {
   const { index } = useCatalogue();
   const { preferences, stateFor, now, updatePreferences } = useUserData();
+  const { t } = useI18n();
 
   // A real element in the document rather than `new Audio()`: it keeps the
   // media session and lock-screen integration working on mobile browsers, and
@@ -107,7 +109,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       const audio = getAudio();
       const nextTracks = index.tracksByEditionId.get(nextEditionId) ?? [];
       const nextTrack = nextTracks.find((item) => item.id === nextTrackId);
-      if (!audio || !nextTrack) return;
+      if (!audio || !nextTrack) {
+        setError(t('player.error.noAudio'));
+        return;
+      }
 
       setEditionId(nextEditionId);
       setTrackId(nextTrackId);
@@ -126,17 +131,17 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         }
         audio.playbackRate = playbackRate;
         if (autoplay) {
-          void audio.play().catch((playError) => {
+          void audio.play().catch(() => {
             // Autoplay policies require a user gesture on iOS Safari.
             setPlaying(false);
-            setError(playError instanceof Error ? playError.message : 'Playback was blocked.');
+            setError(t('player.error.playbackBlocked'));
           });
         }
       };
 
       audio.addEventListener('loadedmetadata', applyStart, { once: true });
     },
-    [getAudio, index, playbackRate],
+    [getAudio, index, playbackRate, t],
   );
 
   /**
@@ -149,10 +154,17 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
    */
   const play = useCallback(
     async (targetEditionId: string, targetTrackId?: string, startAtSeconds?: number) => {
+      setError(undefined);
       const audio = getAudio();
-      if (!audio) return;
+      if (!audio) {
+        setError(t('player.error.noAudio'));
+        return;
+      }
       const targetTracks = index.tracksByEditionId.get(targetEditionId) ?? [];
-      if (targetTracks.length === 0) return;
+      if (targetTracks.length === 0) {
+        setError(t('player.error.noAudio'));
+        return;
+      }
 
       const sameEdition = targetEditionId === editionId;
 
@@ -161,8 +173,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         try {
           audio.playbackRate = playbackRate;
           await audio.play();
-        } catch (playError) {
-          setError(playError instanceof Error ? playError.message : 'Playback was blocked.');
+        } catch {
+          setError(t('player.error.playbackBlocked'));
         }
         return;
       }
@@ -177,7 +189,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
           : undefined;
 
       const resolved = resolveResumeTarget(targetTracks, requested);
-      if (!resolved) return;
+      if (!resolved) {
+        setError(t('player.error.noAudio'));
+        return;
+      }
 
       // Already sitting at the resolved destination: just start playing.
       if (
@@ -188,8 +203,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         try {
           audio.playbackRate = playbackRate;
           await audio.play();
-        } catch (playError) {
-          setError(playError instanceof Error ? playError.message : 'Playback was blocked.');
+        } catch {
+          setError(t('player.error.playbackBlocked'));
         }
         return;
       }
@@ -197,7 +212,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       await persist({ force: true });
       loadTrack(resolved.audioEditionId, resolved.trackId, resolved.offsetSeconds, true);
     },
-    [editionId, getAudio, index, loadTrack, persist, playbackRate, stateFor, trackId],
+    [editionId, getAudio, index, loadTrack, persist, playbackRate, stateFor, t, trackId],
   );
 
   const pause = useCallback(async () => {
@@ -214,10 +229,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     try {
       audio.playbackRate = playbackRate;
       await audio.play();
-    } catch (playError) {
-      setError(playError instanceof Error ? playError.message : 'Playback was blocked.');
+    } catch {
+      setError(t('player.error.playbackBlocked'));
     }
-  }, [playbackRate, track]);
+  }, [playbackRate, t, track]);
 
   const toggle = useCallback(async () => {
     const audio = audioRef.current;
@@ -362,7 +377,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       })();
     };
     const onError = () => {
-      setError('This audio could not be loaded from its source.');
+      setError(t('player.error.audioUnavailable'));
       setPlaying(false);
     };
 
@@ -383,7 +398,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       audio.removeEventListener('ended', onEnded);
       audio.removeEventListener('error', onError);
     };
-  }, []);
+  }, [t]);
 
   // After switching edition/track, record the new location immediately. Without
   // this, a listener who stops right after skipping forward would come back to
@@ -527,4 +542,3 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     </PlayerContext.Provider>
   );
 }
-

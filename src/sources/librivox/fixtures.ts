@@ -39,7 +39,8 @@ export const RUSSIAN_PROJECT: LibriVoxProject = {
       playtime: '30',
       // DEFECT in the live data: the section says "English" on a Russian project.
       language: 'English',
-      listen_url: 'https://www.archive.org/download/notes_underground_russian/01.mp3',
+      listen_url:
+        'https://www.archive.org/download/notes_underground_russian/01-dostoevsky-zapiski-iz-podpolya-I-01-02_64kb.mp3',
       readers: [{ reader_id: '295', display_name: 'Yakovlev Valery' }],
     },
     {
@@ -48,7 +49,8 @@ export const RUSSIAN_PROJECT: LibriVoxProject = {
       title: 'part 1 chapter 3 ',
       playtime: '25',
       language: 'English',
-      listen_url: 'https://www.archive.org/download/notes_underground_russian/02.mp3',
+      listen_url:
+        'https://www.archive.org/download/notes_underground_russian/02-dostoevsky-zapiski-iz-podpolya-I-03-04_64kb.mp3',
       readers: [{ reader_id: '295', display_name: 'Yakovlev Valery' }],
     },
     {
@@ -57,7 +59,8 @@ export const RUSSIAN_PROJECT: LibriVoxProject = {
       title: 'part 2 ',
       playtime: '16',
       language: 'English',
-      listen_url: 'https://www.archive.org/download/notes_underground_russian/03.mp3',
+      listen_url:
+        'https://www.archive.org/download/notes_underground_russian/03-dostoevsky-zapiski-iz-podpolya-I-05_64kb.mp3',
       readers: [{ reader_id: '295', display_name: 'Yakovlev Valery' }],
     },
   ],

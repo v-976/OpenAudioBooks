@@ -256,6 +256,11 @@ export const ru = {
   'player.resumeSavedNote':
     'Сохранено на этом устройстве: {time} главы «{track}».',
   'player.trackOfEdition': 'Глава {track} из «{title}»',
+  'player.error.noAudio': 'Для этой аудиокниги нет доступных аудиофайлов.',
+  'player.error.playbackBlocked':
+    'Браузер не разрешил начать воспроизведение. Нажмите «Слушать» ещё раз.',
+  'player.error.audioUnavailable':
+    'Не удалось загрузить аудио из источника. Проверьте подключение и повторите попытку.',
 
   // --- bookmarks ------------------------------------------------------------
   'bookmarks.title': 'Закладки',

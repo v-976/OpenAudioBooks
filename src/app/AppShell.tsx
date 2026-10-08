@@ -1,4 +1,4 @@
-import { NavLink, Outlet } from 'react-router-dom';
+import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { usePlayer } from '../player/playerContext';
 import { formatDuration } from '../player/playerMachine';
 import { MiniPlayer } from '../components/MiniPlayer';
@@ -12,6 +12,7 @@ import type { TranslationKey } from '../i18n/keys';
 export function AppShell() {
   const player = usePlayer();
   const { t } = useI18n();
+  const location = useLocation();
 
   const navItems: { to: string; labelKey: TranslationKey; end: boolean }[] = [
     { to: '/', labelKey: 'nav.library', end: true },
@@ -37,6 +38,17 @@ export function AppShell() {
       </header>
 
       <main className="app-main" id="main-content">
+        {/*
+          Playback can fail before an edition has a current track (for example,
+          when source metadata contains no playable sections). In that state the
+          mini-player does not exist, so the error must be visible in the shell
+          rather than silently disappearing with the failed click.
+        */}
+        {player.error && (!player.current || location.pathname !== '/now-playing') ? (
+          <p className="notice notice--error" role="alert">
+            {player.error}
+          </p>
+        ) : null}
         <Outlet />
       </main>
 
