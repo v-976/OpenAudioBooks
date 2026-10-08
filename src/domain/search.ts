@@ -1,3 +1,4 @@
+import { normalizeDurationSeconds, sumTrackDurations } from './duration';
 import type {
   AudioEdition,
   Author,
@@ -188,6 +189,107 @@ export interface EditionFilters {
    * rendered as "no restriction" rather than "no results".
    */
   narrationLanguages?: string[];
+  /**
+   * Inclusive duration range in seconds, applied to the audio edition's own
+   * duration. Both bounds are optional and inclusive.
+   *
+   * Editions with an unknown duration are **excluded** whenever this filter is
+   * active: an unknown length cannot be shown to lie inside a range. With no
+   * duration filter they remain visible.
+   */
+  durationRange?: DurationRange;
+  /**
+   * Result order. `catalogue` is alphabetical; the duration orders are applied
+   * after every other filter.
+   */
+  sort?: EditionSort;
+}
+
+/** Inclusive duration bounds, in seconds. */
+export interface DurationRange {
+  minSeconds?: number;
+  maxSeconds?: number;
+}
+
+/** A duration filter that constrains nothing. */
+export const EMPTY_DURATION_RANGE: DurationRange = {};
+
+/** True when the range would actually exclude something. */
+export function isDurationRangeActive(range: DurationRange | undefined): boolean {
+  if (!range) return false;
+  return range.minSeconds !== undefined || range.maxSeconds !== undefined;
+}
+
+/** Sorts the resulting list. `catalogue` is the default order. */
+export type EditionSort = 'catalogue' | 'shortest' | 'longest';
+
+/**
+ * Duration used for filtering and sorting: the edition's own reported total,
+ * falling back to a sum over a complete track list.
+ *
+ * Kept next to the filter code so filtering and sorting can never disagree about
+ * what "the duration" is.
+ */
+export function editionDurationForQuery(view: EditionView): number | undefined {
+  const reported = normalizeDurationSeconds(view.edition.durationSeconds);
+  if (reported !== undefined) return reported;
+  return sumTrackDurations(view.tracks);
+}
+
+/**
+ * Applies a duration range.
+ *
+ * `minSeconds` and `maxSeconds` are both inclusive, so the preset ranges meet
+ * without overlapping at the boundary (a 30-minute book matches 15–30 but not
+ * 30–60).
+ */
+export function matchesDurationRange(
+  view: EditionView,
+  range: DurationRange | undefined,
+): boolean {
+  if (!isDurationRangeActive(range)) return true;
+
+  const duration = editionDurationForQuery(view);
+  // Unknown duration is not "short enough" and is not "long enough".
+  if (duration === undefined) return false;
+
+  const { minSeconds, maxSeconds } = range ?? {};
+  if (minSeconds !== undefined && duration < minSeconds) return false;
+  if (maxSeconds !== undefined && duration > maxSeconds) return false;
+  return true;
+}
+
+/**
+ * Orders editions.
+ *
+ * Rules:
+ *  - `catalogue` keeps the alphabetical order used elsewhere in the app;
+ *  - `shortest` and `longest` order by the edition's own duration;
+ *  - **unknown durations always sort last**, in both directions, because
+ *    "shortest" must never lead with a book whose length is simply unknown;
+ *  - ties break on title then id, so the order is stable across reloads and
+ *    never depends on the underlying fetch order;
+ *  - the sort never mutates the catalogue.
+ */
+export function sortEditionViews(views: EditionView[], sort: EditionSort = 'catalogue'): EditionView[] {
+  const byTitleThenId = (a: EditionView, b: EditionView) =>
+    a.work.title.localeCompare(b.work.title) || a.edition.id.localeCompare(b.edition.id);
+
+  if (sort === 'catalogue') return [...views].sort(byTitleThenId);
+
+  const direction = sort === 'shortest' ? 1 : -1;
+
+  return [...views].sort((a, b) => {
+    const left = editionDurationForQuery(a);
+    const right = editionDurationForQuery(b);
+
+    // Unknown durations go last regardless of direction.
+    if (left === undefined && right === undefined) return byTitleThenId(a, b);
+    if (left === undefined) return 1;
+    if (right === undefined) return -1;
+    if (left !== right) return (left - right) * direction;
+    return byTitleThenId(a, b);
+  });
 }
 
 /**
@@ -218,8 +320,12 @@ export function searchEditions(index: CatalogueIndex, filters: EditionFilters): 
       if (!narratorIds.some((id) => edition.narratorIds.includes(id))) continue;
     }
     if (sourceIds.length > 0 && !sourceIds.includes(edition.sourceId)) continue;
-    if (narrationLanguages.length > 0 && !narrationLanguages.includes(edition.narrationLanguage)) {
-      continue;
+    // An edition with no narration language (a source that does not state one)
+    // cannot be claimed to be in any language, so it never matches a language
+    // filter. It stays visible whenever no language filter is active.
+    if (narrationLanguages.length > 0) {
+      const language = edition.narrationLanguage;
+      if (!language || !narrationLanguages.includes(language)) continue;
     }
 
     const work = index.worksById.get(edition.workId);
@@ -236,13 +342,15 @@ export function searchEditions(index: CatalogueIndex, filters: EditionFilters): 
       tracks: tracksForEdition(index, edition.id),
     };
     if (text && !matchesText(view, text)) continue;
+    // Duration filtering runs after the other facets so that a duration filter
+    // and a language/narrator filter compose rather than replace each other.
+    if (!matchesDurationRange(view, filters.durationRange)) continue;
     results.push(view);
   }
 
-  return results.sort((a, b) =>
-    a.work.title.localeCompare(b.work.title) ||
-    a.edition.narrationLanguage.localeCompare(b.edition.narrationLanguage),
-  );
+  // Sorting is applied by the caller via `sortEditionViews`, so that a caller
+  // which does not ask for a particular order still gets a stable default.
+  return sortEditionViews(results, filters.sort ?? 'catalogue');
 }
 
 function matchesText(view: EditionView, text: string): boolean {
@@ -280,7 +388,8 @@ export function allGenres(index: CatalogueIndex): string[] {
 export function availableNarrationLanguages(index: CatalogueIndex): string[] {
   const languages = new Set<string>();
   for (const edition of index.catalogue.audioEditions) {
-    languages.add(edition.narrationLanguage);
+    // Editions with no verified narration language contribute no entry.
+    if (edition.narrationLanguage) languages.add(edition.narrationLanguage);
   }
   return [...languages].sort((a, b) => a.localeCompare(b));
 }

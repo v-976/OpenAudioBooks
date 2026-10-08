@@ -9,13 +9,14 @@
  */
 
 export const DB_NAME = 'openaudiobooks';
-export const DB_VERSION = 1;
+export const DB_VERSION = 2;
 
 export const STORES = {
   userState: 'userState',
   bookmarks: 'bookmarks',
   history: 'history',
   meta: 'meta',
+  providerCache: 'providerCache',
 } as const;
 
 export type StoreName = (typeof STORES)[keyof typeof STORES];
@@ -51,6 +52,24 @@ export const MIGRATIONS: Migration[] = [
       history.createIndex('playedAt', 'playedAt', { unique: false });
 
       db.createObjectStore(STORES.meta, { keyPath: 'key' });
+    },
+  },
+  {
+    version: 2,
+    description: 'Add a per-source metadata cache for provider catalogues',
+    dataImpact:
+      'Creates a new `providerCache` store only. No existing store, record or index is read, ' +
+      'rewritten or deleted, so playback positions, bookmarks, favourites and history from Alpha ' +
+      '0.1.x are untouched. The store holds source METADATA ONLY; no audio file is ever cached. ' +
+      'Removing the store later would only discard cached catalogue data.',
+    migrate(db) {
+      // Keyed by [sourceId, recordId] so two providers cannot collide, with an
+      // index on sourceId for bulk reads and on fetchedAt for staleness checks.
+      const store = db.createObjectStore(STORES.providerCache, {
+        keyPath: ['sourceId', 'recordId'],
+      });
+      store.createIndex('sourceId', 'sourceId', { unique: false });
+      store.createIndex('fetchedAt', 'fetchedAt', { unique: false });
     },
   },
 ];

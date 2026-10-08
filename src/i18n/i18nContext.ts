@@ -14,6 +14,14 @@ export interface I18nContextValue {
   t(key: TranslationKey, params?: TranslateParams, count?: number): string;
   /** Human-readable language name, e.g. "Русский" for `ru`. */
   languageName(code: LanguageCode): string;
+  /**
+   * Narration-language label for an edition that may not have a language.
+   *
+   * An edition without a narration language (a source that does not state one,
+   * e.g. a "Multilingual" recording) is labelled as unknown rather than being
+   * attributed to a language that was never verified.
+   */
+  narrationLanguageName(code: LanguageCode | undefined): string;
 }
 
 export const I18nContext = createContext<I18nContextValue | undefined>(undefined);

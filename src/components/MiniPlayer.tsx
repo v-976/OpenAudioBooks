@@ -9,7 +9,7 @@ import { useI18n } from '../i18n/i18nContext';
  */
 export function MiniPlayer() {
   const player = usePlayer();
-  const { t, languageName } = useI18n();
+  const { t, narrationLanguageName } = useI18n();
   if (!player.current) return null;
 
   const { edition, track } = player.current;
@@ -32,7 +32,7 @@ export function MiniPlayer() {
         <Link to="/now-playing" className="mini-player__meta">
           <span className="mini-player__title">{track.title}</span>
           <span className="mini-player__subtitle">
-            {languageName(edition.narrationLanguage)}
+            {narrationLanguageName(edition.narrationLanguage)}
           </span>
         </Link>
         <span className="mini-player__time">

@@ -1,71 +1,127 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { buildIndex, viewForEdition, type EditionView } from '../domain/search';
 import type { Catalogue } from '../domain/types';
 import { DevCatalogueAdapter, devCatalogue } from '../data/devCatalogue';
 import { AdapterRegistry } from '../sources/adapter';
+import { LibriVoxAdapter } from '../sources/librivox/LibriVoxAdapter';
 import { CatalogueContext, type CatalogueContextValue } from './catalogueContext';
+import type { ProviderLoadState } from './providerLoadState';
+
+/** How much LibriVox to load on a cold start. Deliberately small. */
+const LIBRIVOX_INITIAL_PAGES = 2;
+const LIBRIVOX_PAGE_SIZE = 50;
 
 /**
  * Builds the in-memory catalogue from registered source adapters.
  *
- * Real adapters (LibriVox, Internet Archive, MDS, ...) will register
+ * Real adapters (LibriVox now; Internet Archive, MDS, ... later) register
  * themselves here alongside the bundled development adapter. The provider is
- * intentionally unaware of any specific provider.
+ * intentionally unaware of any specific provider beyond wiring it up.
  */
-export function CatalogueProvider({ children }: { children: ReactNode }) {
-  const registry = useMemo(() => createRegistry(), []);
+/**
+ * Builds the in-memory catalogue from registered source adapters.
+ *
+ * Real adapters (LibriVox now; Internet Archive, MDS, ... later) register
+ * themselves here alongside the bundled development adapter. The provider is
+ * intentionally unaware of any specific provider beyond wiring it up.
+ */
+export function CatalogueProvider({ children }: { children: ReactNode }) {  const registry = useMemo(() => createRegistry(), []);
   const adapters = useMemo(() => registry.enabled(), [registry]);
   const [catalogue, setCatalogue] = useState<Catalogue>(() => devCatalogue);
+  const [providerState, setProviderState] = useState<ProviderLoadState>({
+    status: 'idle',
+    sourceId: undefined,
+    partial: false,
+    loadedCount: 0,
+    error: undefined,
+  });
+
+  const loadProviderCatalogue = useCallback(
+    async (refresh: boolean) => {
+      const adapter = registry.get('librivox');
+      if (!adapter || !('loadCatalogue' in adapter)) return;
+      const libriVox = adapter as LibriVoxAdapter;
+
+      setProviderState((previous) => ({ ...previous, status: 'loading' }));
+      try {
+        const fetched = await libriVox.loadCatalogue({ refresh });
+        const scan = libriVox.getScanState();
+        const combined = mergeCatalogues([devCatalogue, fetched]);
+        setCatalogue(shouldShowDevCatalogue(combined) ? devCatalogue : fetched);
+        setProviderState({
+          status: 'ready',
+          sourceId: 'librivox',
+          // A scan that hit its page cap left the catalogue incomplete, and the
+          // UI must say so rather than implying full coverage.
+          partial: Boolean(scan?.truncated),
+          loadedCount: fetched.audioEditions.length,
+          error: undefined,
+        });
+      } catch (error) {
+        // The bundled fixtures stay on screen, so the application remains usable
+        // with no network at all.
+        setProviderState({
+          status: 'error',
+          sourceId: 'librivox',
+          partial: false,
+          loadedCount: 0,
+          error: error instanceof Error ? error.message : 'unknown',
+        });
+      }
+    },
+    [registry],
+  );
 
   useEffect(() => {
     let cancelled = false;
-
     void (async () => {
-      const catalogues: Catalogue[] = [devCatalogue];
-      for (const adapter of registry.enabled()) {
-        if (!adapter.fetchCatalogue) continue;
-        try {
-          const fetched = await adapter.fetchCatalogue();
-          if (fetched.works.length > 0) catalogues.push(fetched);
-        } catch (error) {
-          console.warn(`Source adapter "${adapter.id}" catalogue fetch failed.`, error);
+      // Development fixtures are shown immediately so the first paint never waits
+      // on the network; the provider result replaces them when it arrives.
+      if (!cancelled) {
+        const adapter = registry.get('librivox');
+        if (adapter && 'loadCatalogue' in adapter) {
+          await loadProviderCatalogue(false);
         }
       }
-      if (!cancelled) setCatalogue(mergeCatalogues(catalogues));
     })();
-
     return () => {
       cancelled = true;
     };
-  }, [registry]);
+  }, [loadProviderCatalogue, registry]);
 
-  const value = useMemo<CatalogueContextValue>(() => {
-    const index = buildIndex(
-      catalogue ?? {
-        authors: [],
-        works: [],
-        narrators: [],
-        sources: [],
-        audioEditions: [],
-        tracks: [],
-        isDevelopmentData: true,
-      },
-    );
-    return {
-      index,
+  const refreshProviderCatalogue = useCallback(() => loadProviderCatalogue(true), [
+    loadProviderCatalogue,
+  ]);
+
+  const value = useMemo<CatalogueContextValue>(
+    () => ({
+      index: buildIndex(catalogue),
       adapters,
-      isDevelopmentData: index.catalogue.isDevelopmentData,
+      isDevelopmentData: catalogue.isDevelopmentData && shouldShowDevCatalogue(catalogue),
       getEdition(editionId: string): EditionView | undefined {
-        return viewForEdition(index, editionId);
+        return viewForEdition(buildIndex(catalogue), editionId);
       },
-    };
-  }, [catalogue, adapters]);
+      providerState,
+      refreshProviderCatalogue,
+    }),
+    [adapters, catalogue, providerState, refreshProviderCatalogue],
+  );
 
   return <CatalogueContext.Provider value={value}>{children}</CatalogueContext.Provider>;
 }
 
 /**
- * Builds the adapter registry.
+ * Whether the bundled development fixtures are shown.
+ *
+ * They are hidden once a real provider has contributed records, because a
+ * listener should never mistake fictional test data for a real audiobook.
+ */
+function shouldShowDevCatalogue(catalogue: Catalogue): boolean {
+  const hasRealWorks = catalogue.works.some((work) => !work.id.startsWith('dev:'));
+  return !hasRealWorks;
+}
+
+/**
  *
  * Real adapters (LibriVox, Internet Archive, MDS, RSS feeds, ...) get added
  * here. Nothing else in the application needs to know they exist.
@@ -73,6 +129,9 @@ export function CatalogueProvider({ children }: { children: ReactNode }) {
 function createRegistry(): AdapterRegistry {
   const registry = new AdapterRegistry();
   registry.register(new DevCatalogueAdapter());
+  registry.register(
+    new LibriVoxAdapter({ maxPages: LIBRIVOX_INITIAL_PAGES, pageSize: LIBRIVOX_PAGE_SIZE }),
+  );
   return registry;
 }
 

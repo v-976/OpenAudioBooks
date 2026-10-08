@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { EditionCard } from '../components/EditionCard';
+import { ProviderStatus } from '../components/ProviderStatus';
 import { useCatalogue } from '../app/catalogueContext';
 import { useUserData } from '../app/userData';
 import { usePlayer } from '../player/playerContext';
@@ -59,6 +60,8 @@ export function LibraryPage() {
           {t('library.developmentNoticeBody')}
         </p>
       ) : null}
+
+      <ProviderStatus />
 
       <section className="section" aria-labelledby="language-filter-heading">
         <h2 className="section__title" id="language-filter-heading">

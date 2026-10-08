@@ -1,5 +1,5 @@
 import { normalizeLanguageList } from '../domain/language';
-import { DEFAULT_PREFERENCES, type Preferences } from '../domain/types';
+import { DEFAULT_PREFERENCES, type CatalogueSort, type Preferences } from '../domain/types';
 import { resolveUiLocale } from '../i18n';
 
 /**
@@ -17,9 +17,21 @@ import { resolveUiLocale } from '../i18n';
  *  - Nothing previously stored is deleted, and playback state in IndexedDB is
  *    untouched: the localStorage preferences store is NOT part of the IndexedDB
  *    schema, so no IndexedDB migration and no DB version bump are required.
+ *
+ * Data impact, Alpha 0.1.1 → 0.2.0:
+ *  - `catalogueSort` was added. Same treatment: an absent value falls back to
+ *    `'catalogue'` and every other stored field is preserved unchanged.
  */
 
 const STORAGE_KEY = 'openaudiobooks.preferences.v1';
+
+const SORT_VALUES: CatalogueSort[] = ['catalogue', 'shortest', 'longest'];
+
+function normalizeSort(value: unknown): CatalogueSort {
+  return SORT_VALUES.includes(value as CatalogueSort)
+    ? (value as CatalogueSort)
+    : 'catalogue';
+}
 
 function clampRate(value: number): number {
   if (!Number.isFinite(value)) return DEFAULT_PREFERENCES.playbackRate;
@@ -52,6 +64,7 @@ export function normalizePreferences(raw: unknown): Preferences {
     preferredAudioLanguages: Array.isArray(input.preferredAudioLanguages)
       ? normalizeLanguageList(input.preferredAudioLanguages)
       : [...DEFAULT_PREFERENCES.preferredAudioLanguages],
+    catalogueSort: normalizeSort(input.catalogueSort),
     ...(input.lastAudioEditionId ? { lastAudioEditionId: input.lastAudioEditionId } : {}),
   };
 }

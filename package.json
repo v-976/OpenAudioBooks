@@ -1,7 +1,7 @@
 {
   "name": "openaudiobooks",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "OpenAudioBooks Alpha 0.1.0 - free, public, non-commercial PWA for discovering and listening to legally available free audiobooks.",
   "license": "PolyForm-Noncommercial-1.0.0",
   "type": "module",

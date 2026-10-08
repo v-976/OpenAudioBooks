@@ -98,105 +98,158 @@ conflated, derived from one another, or reused for one another:
     adding its key and translation. Code identifiers, TypeScript type names,
     route paths and URLs stay in English.
 
-## 4. Content and rights
+## 4. Duration, sorting and partial catalogues
 
-14. **Never assume "free to listen" means Public Domain.** Report what the source
+14. **Duration belongs to the `AudioEdition`,** never to the `Work`. Two
+    recordings of the same book can differ in length, and one work can have
+    editions in different languages read at different speeds.
+15. **An unknown duration is not zero.** It is `undefined`, displayed as
+    «Длительность неизвестна», and never rendered as `0 мин`, `0:00` or any other
+    number that claims a length the source did not report.
+16. **Adapters must normalise duration** into whole seconds, prefer the source's
+    own total, and only sum sections when the list is verifiably complete and every
+    section duration is known. Never substitute an invented figure.
+17. **A reported total is never silently "corrected"** by a disagreeing section
+    sum. Keep the total, flag the disagreement, and do not imply false precision.
+18. **Duration sorting must work in both directions** — shortest first and
+    longest first — and must be applied after every active filter.
+19. **Unknown durations always sort last, in both directions.** "Shortest" must
+    never lead with a book whose length is simply unknown.
+20. **A duration range excludes unknown durations.** An unknown length cannot be
+    shown to lie inside a range. With no range applied, unknown durations stay
+    visible.
+21. **Duration filters compose with every other facet** — text, author, narrator,
+    genre, series, narration language, source — and can be reset independently of
+    them.
+22. **A partially loaded catalogue must never be presented as complete.** While
+    the loaded set is a slice of a provider's, any "shortest" or "longest" claim
+    applies to the loaded records only, and the interface must say so. Never
+    perform a hidden bulk download of thousands of records to satisfy a sort.
+23. **Selected sort order is a user preference** and is persisted, but it must
+    never override an explicit user choice in the current session.
+
+## 5. Content and rights
+
+24. **Never assume "free to listen" means Public Domain.** Report what the source
     reports. Use `unknown` when the source says nothing. MDS content is
     free-to-listen and is **not** automatically public domain; neither is podcast
     content, nor anything from a donation archive, nor anything else.
-15. **Never copy or rehost third-party audiobook files** unless their licence
+25. **Never copy or rehost third-party audiobook files** unless their licence
     explicitly permits redistribution *and* the project owner explicitly approves
     it. Reference remote URLs instead. Caching, mirroring and downloading into the
     repository are all prohibited.
-16. **Never add real audiobook metadata, cover images or audio files** to the
+26. **Never add real audiobook metadata, cover images or audio files** to the
     repository. Development data is fictional, `dev:`-prefixed, and on the
     reserved `example.invalid` domain.
-17. Never assert rights status the source does not state.
+27. Never assert rights status the source does not state.
 
-## 5. Architecture boundaries
+## 6. Architecture boundaries
 
-18. **Provider-specific logic belongs in source adapters**, not UI components. A
+28. **Provider-specific logic belongs in source adapters**, not UI components. A
     screen must never import from `src/data/devCatalogue.ts` or branch on a
     provider id. If adding a provider requires touching a screen, the adapter
     boundary is in the wrong place — fix the boundary.
-19. **Domain entities must not depend on a specific provider**, a DOM API,
+29. **Domain entities must not depend on a specific provider**, a DOM API,
     storage, or React. `src/domain/*` imports only from `src/domain/*`, apart from
     the type-only import of translation keys in `rights.ts`.
     This is what keeps the planned Android client possible.
-20. **UI must not import `src/persistence/*` or `src/sources/*` directly.** Go
+30. **UI must not import `src/persistence/*` or `src/sources/*` directly.** Go
     through the contexts (`useUserData`, `usePlayer`, `useCatalogue`) and
     `useCatalogueLanguageFilter()`.
-21. **Do not perform broad refactors unrelated to the assigned task.** No
+31. **Do not perform broad refactors unrelated to the assigned task.** No
     reformatting, no dependency churn, no renaming across the codebase for
     tidiness. If you spot a real problem, report it rather than fixing it in
     passing.
 
-## 6. Persistence
+## 7. Persistence
 
-22. **Preserve backwards compatibility of stored user playback data whenever
+32. **Preserve backwards compatibility of stored user playback data whenever
     practical.** Never drop or rewrite a user's saved positions.
-23. **Before changing a persisted data schema, document the migration
+33. **Before changing a persisted data schema, document the migration
     implications.** Append a migration to `MIGRATIONS` in `src/persistence/db.ts`
     with a version, a description and a `dataImpact` note; bump `DB_VERSION`;
     update the migrations section of `ARCHITECTURE.md`; add a test that exercises
     the upgrade. Never edit or reorder existing migrations.
-24. Add a reopen test for any persistence change. The actual requirement is that
+34. Add a reopen test for any persistence change. The actual requirement is that
     state survives closing the app and coming back, so that is what must be
     verified.
-25. Never add a network write to a persistence path.
+35. Never add a network write to a persistence path.
 
-## 7. Security and hygiene
+## 8. Security and hygiene
 
-26. **Do not commit secrets, API keys, credentials, tokens or private data.**
+36. **Do not commit secrets, API keys, credentials, tokens or private data.**
     No `.env` files with real values, no tokens in source, no personal data in
     fixtures or tests.
-27. Do not weaken the ESLint or TypeScript configuration to make a change pass.
+37. Do not weaken the ESLint or TypeScript configuration to make a change pass.
     Fix the code.
-28. Do not modify CI, repository settings, credentials or GitHub account settings.
+38. Do not modify CI, repository settings, credentials or GitHub account settings.
 
-## 8. Dependencies
+## 9. Dependencies
 
-29. **Keep dependencies minimal and justify substantial new dependencies.** State
+39. **Keep dependencies minimal and justify substantial new dependencies.** State
     what is being replaced, why existing dependencies are insufficient, the
     licence, maintenance status and size impact. Prefer extending what exists.
-30. **Do not add analytics, telemetry, tracking or advertising SDKs.** Ever, as
+40. **Do not add analytics, telemetry, tracking or advertising SDKs.** Ever, as
     a dependency or otherwise.
-31. Record every added dependency in `THIRD_PARTY_NOTICES.md` with version and
+41. Record every added dependency in `THIRD_PARTY_NOTICES.md` with version and
     licence. Dependencies keep their own licences regardless of this project's.
 
-## 9. Testing and verification
+## 10. Testing and verification
 
-32. Run `npm run check` (lint, typecheck, tests, production build) before
+42. Run `npm run check` (lint, typecheck, tests, production build) before
     reporting work as done. Fix errors your change caused. Do not suppress them.
-33. Add tests for domain invariants, narrator relationships, resume and skip
+43. Add tests for domain invariants, narrator relationships, resume and skip
     behaviour, persistence across a simulated restart, rights/attribution
     rendering, language filtering and localization fallback.
-34. Do not weaken or delete an existing test to make a change pass. If a test is
+44. Do not weaken or delete an existing test to make a change pass. If a test is
     genuinely wrong, say so explicitly and explain why.
 
-## 10. Honesty
+## 11. Honesty
 
-35. **Never claim a capability the project does not have.** Do not claim iOS
+45. **Never claim a capability the project does not have.** Do not claim iOS
     background playback works. Do not claim real audiobook availability before an
     adapter ships. Do not describe alpha software as production-ready. Do not
     claim an English or Finnish interface translation exists when only Russian
     is complete.
-36. Report unfinished work plainly. A partial implementation described as
+46. Report unfinished work plainly. A partial implementation described as
     partial is useful; one described as complete is not.
-37. Do not fake, stub or simulate a required behaviour and then present it as
+47. Do not fake, stub or simulate a required behaviour and then present it as
     working. Playback resume in particular must be genuinely persisted, not
     mocked.
-38. When you are blocked or uncertain, say so and stop. Do not guess about
+48. When you are blocked or uncertain, say so and stop. Do not guess about
     rights, licences, or provider behaviour.
 
-## 11. Scope discipline
+## 12. Source integrations and API limits
 
-39. Do not begin provider integration (LibriVox, Internet Archive, MDS, RSS or
+49. **Never work around a provider's API limits.** Respect documented rate
+    limits, page-size caps and `429`/`Retry-After` behaviour. Never add a proxy,
+    a scraper, or server infrastructure of our own to get around a limit or a
+    CORS restriction without explicit project-owner approval.
+50. **Never download, cache, mirror or re-publish provider audio.** Only remote
+    URLs are referenced; playback streams from the host the provider uses.
+51. **Never mirror a provider catalogue.** Cache a bounded slice, refresh it
+    explicitly, and cap it. A mirror is a different project.
+52. **Audit a provider before integrating it, and record the audit.** Verify the
+    endpoint, response format, pagination, rate limits, field shapes and rights
+    from the live API. Never assume a field exists because the documentation
+    implies it: verify it, and record defects found in the data.
+53. **Never trust a provider field without checking what it actually contains.**
+    A field can be present, documented, usually correct and still wrong often
+    enough to matter — LibriVox's per-section `language` says `"English"` on every
+    verified Russian recording and on ~8 % of other projects, and trusting it
+    would misclassify exactly those. Measure the disagreement rate on real data
+    and assert observed behaviour, not the documented intent.
+54. **De-duplicate by stable provider id on every page.** Pagination that
+    overlaps or skips is normal; assuming `offset` arithmetic is not.
+
+## 13. Scope discipline
+
+55. Do not begin provider integration (LibriVox, Internet Archive, MDS, RSS or
     otherwise) unless that is the assigned task.
-40. Do not implement the Android client unless that is the assigned task.
-41. Do not add a backend unless that is the assigned task and the project owner
+56. Do not implement the Android client unless that is the assigned task.
+57. Do not add a backend unless that is the assigned task and the project owner
     has explained why it is technically required.
-42. Architectural changes outside the scope of the assigned task require prior
+58. Architectural changes outside the scope of the assigned task require prior
     explanation, not just a good diff.
 
 ---
@@ -204,22 +257,24 @@ conflated, derived from one another, or reused for one another:
 ## Quick orientation for a new agent
 
 ```
-src/domain/          entities, search, language, rights — pure, no dependencies
+src/domain/          entities, search, language, rights, duration — pure
 src/i18n/             translation keys, locale bundles, plural rules, t()
-src/sources/         SourceAdapter contract and registry
+src/sources/         SourceAdapter contract, registry, per-provider adapters
+  librivox/          types, pure mapping (parse), transport (client), adapter
 src/data/            bundled development fixtures (fictional, dev: prefixed)
-src/persistence/     IndexedDB schema, migrations, repositories
+src/persistence/     IndexedDB schema, migrations, repositories, cache
 src/player/          playerMachine (pure) + PlayerProvider (media element)
 src/app/             providers, contexts, language filter, routing, shell
 src/pages/           screens
 src/components/      shared UI
 src/styles/          global CSS
 scripts/             local asset generators (no network)
+docs/                source audits and design notes
 ```
 
 Verification command: `npm run check`.
 
-Two failures matter most, and both are structural rather than cosmetic:
+Three failures matter most, and all are structural rather than cosmetic:
 
 1. **User playback state must survive a restart.** If a change makes that worse or
    uncertain, the change is wrong regardless of how clean it looks.
@@ -227,4 +282,8 @@ Two failures matter most, and both are structural rather than cosmetic:
    interface language decide the catalogue language, or lets an edition's
    narration language overwrite its work's original language, the change is
    wrong however reasonable it looks.
+3. **A claim must not outrun the data.** An unknown duration must not become
+   `0 мин`, a duration sort over a partial catalogue must not be presented as a
+   provider-wide ranking, and a provider field must not be trusted without
+   checking what it actually contains.
 

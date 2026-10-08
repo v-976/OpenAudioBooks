@@ -38,10 +38,12 @@ Read this before changing architecture, and read
 │              orchestration + context boundaries            │
 ├──────────────────────────────────────────────────────────┤
 │  Domain      src/domain/*                                  │
-│              entities, indexes, search, language, rights   │
-│              pure; no DOM, no storage, no provider names   │
+│              entities, indexes, search, language, rights,  │
+│              duration; pure: no DOM, no storage, no        │
+│              provider names                                │
 ├──────────────────────────────────────────────────────────┤
 │  Sources     src/sources/adapter.ts (contract),            │
+│              src/sources/<provider>/ (adapters),           │
 │              src/data/devCatalogue.ts (bundled fixture)    │
 ├──────────────────────────────────────────────────────────┤
 │  Persistence src/persistence/*                             │
@@ -170,17 +172,33 @@ Rules an adapter must follow:
 5. **Normalise language metadata** through `normalizeLanguageCode()` before
    setting `AudioEdition.narrationLanguage`, and never derive
    `Work.originalLanguage` from it. Leave an unknown work language unknown.
-6. Namespace every id with the adapter's `source.id`.
-7. Return `{ unsupported: true }` rather than throwing when a provider genuinely
+6. **Normalise duration** into whole seconds per §13.3: prefer the source's own
+   total, sum only a verifiably complete section list, and never invent a figure.
+7. Namespace every id with the adapter's `source.id`.
+8. Return `{ unsupported: true }` rather than throwing when a provider genuinely
    cannot answer a query.
+9. **Bound every scan**, and report whether it was truncated. A scan that stops at
+   a page cap must not be presented as a complete provider catalogue.
 
 `AdapterRegistry` (`src/sources/adapter.ts`) holds the enabled adapters.
 `CatalogueProvider` builds the registry and merges the catalogues returned by
 adapters; it is unaware of any specific provider. `CatalogueContext` exposes the
 merged result to the UI, so screens never import adapter code.
 
-To add a provider: implement the interface, register it in `createRegistry()` in
-`src/app/CatalogueProvider.tsx`, and add fixture data. No screen should change.
+To add a provider: audit it first (§13.1), implement the interface, register it in
+`createRegistry()` in `src/app/CatalogueProvider.tsx`, and add fixture data. No
+screen should change.
+
+### Adapters that ship
+
+| Adapter | Location | Transport | Status |
+| --- | --- | --- | --- |
+| `DevCatalogueAdapter` | `src/data/devCatalogue.ts` | none (bundled) | Fictional fixtures, `dev:`-prefixed |
+| `LibriVoxAdapter` | `src/sources/librivox/` | JSONP over `<script>` (§13.2) | Real provider, partial catalogue by design |
+
+An adapter that needs extra lifecycle beyond the contract (`loadCatalogue`,
+`getScanState`) declares it as an optional capability and the provider narrows on
+it, so the contract stays honest rather than being widened for one provider.
 
 ### Catalogue index and search
 
@@ -244,6 +262,17 @@ requirement, not a nicety.
 
 `history` is pruned to `MAX_HISTORY_ENTRIES` (200) so local storage cannot grow
 without bound.
+
+#### Migration ledger
+
+| Version | Change | Data impact |
+| --- | --- | --- |
+| 1 | Initial schema: `userState`, `bookmarks`, `history`, `meta` | Baseline. |
+| 2 | Added `providerCache`, keyed by `[sourceId, recordId]` with indexes on `sourceId` and `fetchedAt` | **Additive only.** Creates a new store; reads, writes or deletes no existing store, record or index. Playback positions, bookmarks, favourites and history from 0.1.x are untouched. Holds source metadata only — no audio file is ever cached. Dropping the store would discard cached catalogue data and nothing else. |
+
+Adding a cache store rather than reusing `userState` is deliberate: a provider
+refresh and a playback write then cannot interfere, so clearing cached metadata
+can never put a listener's progress at risk.
 
 ## 6. Player state architecture
 
@@ -427,7 +456,9 @@ Android can reuse it. It must remain free of DOM APIs and free of telemetry.
 
 | To do this | Do it here |
 | --- | --- |
-| Add a real provider | New file in `src/sources/`, register in `CatalogueProvider.createRegistry()`, normalise language metadata with `normalizeLanguageCode()` |
+| Add a real provider | New folder in `src/sources/<provider>/`, register in `CatalogueProvider.createRegistry()`, normalise language with `normalizeLanguageCode()` and duration with `resolveEditionDuration()` |
+| Change how a provider is fetched | That provider's transport file only; mapping must stay pure and separately testable |
+| Change duration handling | `src/domain/duration.ts` (values) or `src/domain/durationPresets.ts` (ranges/format) |
 | Add a field to the domain | `src/domain/types.ts`, plus a read migration if persisted |
 | Add a screen | `src/pages/`, then add a route in `AppRoutes.tsx` |
 | Change search | `src/domain/search.ts` only |
@@ -587,9 +618,131 @@ way that requires a version bump. A test seeds a literal Alpha 0.1.0 preferences
 record and asserts every original field survives while the new fields receive
 defaults.
 
-## 13. Explicit non-goals for this phase
+## 13. LibriVox integration and the duration model
 
-No backend. No accounts. No cloud sync. No scraping. No Android client. No real
-provider integration. No analytics, telemetry or third-party services. No
-re-hosting of audiobook files. Visual polish is secondary to accessibility and
-touch targets.
+Added in Alpha 0.2.0. This section records the decisions that are not obvious
+from the code, and the constraints that came out of the API audit.
+
+### 13.1 Source audit
+
+Full findings are in [`docs/librivox-api-research.md`](docs/librivox-api-research.md).
+The decisions that shaped the code:
+
+| Finding | Decision |
+| --- | --- |
+| No CORS headers on `librivox.org` | Use the API's own documented `format=jsonp&callback=`; no proxy, no server |
+| `sections[].language` contradicts the project language on ~8 % of projects, and on **every** verified Russian project | Ignore it entirely; use project-level `language` |
+| `Multilingual` is not a language | Leave `narrationLanguage` unset rather than inventing one |
+| `Old English` is a historic variety | Do not collapse it onto modern English |
+| `offset` pagination overlaps and skips | De-duplicate by id; never rely on offset arithmetic |
+| `totaltimesecs` ≠ sum of section playtimes | Prefer the reported total; sum only complete lists |
+| Empty result is HTTP **404**, not an empty array | Treat 404 on a list query as "no matches" |
+| `limit` max 500; 429 and 5xx possible | Cap page size, serialise requests, delay between them |
+| 22,500+ projects, no `language` parameter | Every scan is bounded; the catalogue is always partial |
+| Audio: archive.org sends `ACAO: *` + ranges | Stream `listen_url` directly; never download or re-host |
+
+### 13.2 Transport: JSONP, and what it costs
+
+The API sends no `Access-Control-Allow-Origin`, so `fetch` is blocked from the
+browser. The API also supports `format=jsonp&callback=NAME`, which works
+cross-origin because a `<script src>` load is not subject to CORS. That is the
+API's own documented output format and needs **no proxy and no server of ours**,
+which keeps the project inside its stated constraints.
+
+The honest cost: **the response body is evaluated as JavaScript by the browser.**
+That is inherent to JSONP, not a choice this project made. Mitigations in
+`src/sources/librivox/client.ts`:
+
+- a unique callback name per request (`__oabLibriVox_<n>_<time>`);
+- the `<script>` element and the global callback are always removed, on both the
+  success and the failure path;
+- a hard timeout, so a silent server cannot leave a promise pending forever;
+- `AbortSignal` support, and an already-aborted request creates no element at all;
+- requests are serialised with a minimum spacing, so no two overlap;
+- no `eval` anywhere.
+
+If a proxy or a build-time import step ever becomes acceptable, that would be a
+strictly safer transport. The transport is isolated in `client.ts`, so swapping
+it would not touch `parse.ts` or the adapter's mapping rules.
+
+### 13.3 Duration model
+
+Durations belong to an `AudioEdition`, never to a `Work`, and are stored in whole
+seconds as `durationSeconds?: number`.
+
+| Rule | Where |
+| --- | --- |
+| Unknown is `undefined`, never `0` | `normalizeDurationSeconds` treats `0` as unknown |
+| Out-of-range, negative and junk values are rejected | `normalizeDurationSeconds` |
+| Prefer the source's own total | `resolveEditionDuration` |
+| Sum sections only when the list is complete and every duration is known | `sumTrackDurations` + `num_sections` |
+| Never "correct" a reported total that disagrees with its own sections | `resolveEditionDuration` keeps the total and flags `inconsistent` |
+| A summed value is marked as an estimate | `durationOrigin` on the edition |
+
+Display never invents precision: a sub-minute recording keeps whole seconds
+(`19 с`) rather than rounding down to `0 мин`, and an unknown duration renders as
+«Длительность неизвестна».
+
+### 13.4 Filtering and sorting
+
+`EditionFilters.durationRange` (inclusive bounds) and `EditionFilters.sort`.
+
+- Preset ranges use an **exclusive** upper bound internally, stepped back one
+  second when converted, so consecutive presets tile the timeline without
+  double-counting: a 30-minute book belongs to «30–60 минут», not «15–30 минут».
+- Editions with an unknown duration are **excluded** whenever a duration filter is
+  active, because an unknown length cannot be shown to lie inside a range. With no
+  duration filter they remain visible.
+- The duration filter composes with text, author, narrator, genre, series,
+  narration language and source. Filtering happens before sorting.
+- `sortEditionViews` puts **unknown durations last in both directions**, breaks
+  ties on title then id, never mutates its input, and keeps the language filter
+  intact.
+- The sort preference is stored in `Preferences.catalogueSort` and restored on the
+  next launch; a `sort` parameter in the URL overrides it for a shared link.
+
+### 13.5 Partial catalogue honesty
+
+LibriVox has more than 22,500 projects. Walking them all would mean 46+ pages per
+device load, which is abusive and explicitly not wanted. Therefore:
+
+- every scan is capped (`maxPages`), and de-duplicates across pages;
+- `providerState.partial` is set when a cap ended a scan early;
+- the UI shows a provider status block with the loaded count and an explicit
+  refresh button — nothing auto-downloads;
+- **while the loaded catalogue is partial, a duration sort is labelled as applying
+  to the loaded records only.** The interface never claims to be showing the
+  shortest or longest books in LibriVox.
+
+`isDevelopmentData` counts as partial for the same reason: bundled fixtures are
+not a provider catalogue.
+
+### 13.6 Local metadata cache
+
+`providerCache` object store, added by migration 2 (see §5, *Migration ledger*). Scope:
+
+- **metadata only** — no audio file is ever downloaded or cached;
+- keyed by `[sourceId, recordId]`, with indexes on `sourceId` and `fetchedAt`;
+- written one batch per transaction, so an interrupted refresh leaves the
+  previous cache intact rather than half-written;
+- capped at `CACHE_MAX_RECORDS`, pruning the oldest first;
+- cache-first on load, so the catalogue works offline;
+- clearing it touches playback state not at all.
+
+This is not a mirror of LibriVox and must not become one.
+
+### 13.7 Known limitation
+
+There is **no server-side language filter** in the LibriVox API. A Russian-only
+view therefore has to scan pages and filter locally, which means the Russian
+subset of a partial catalogue is a partial subset. This is a property of the
+source, not of the adapter, and it is stated rather than hidden.
+
+No backend. No accounts. No cloud sync. No scraping. No Android client. No
+analytics, telemetry or third-party services. No re-hosting of audiobook files.
+No mirror of any provider catalogue. Visual polish is secondary to
+accessibility and touch targets.
+
+LibriVox is the first integrated source. Internet Archive, MDS, RSS and the rest
+remain unimplemented by design; each will be an adapter behind the same contract,
+with its own audit.

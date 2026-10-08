@@ -1,7 +1,8 @@
 import { Link } from 'react-router-dom';
-import type { EditionView } from '../domain/search';
+import { editionDurationForQuery, type EditionView } from '../domain/search';
 import { useI18n } from '../i18n/i18nContext';
 import { RightsBadge } from './RightsBadge';
+import { DurationLabel } from './DurationLabel';
 
 /**
  * Compact card used in lists of audio editions.
@@ -16,7 +17,7 @@ export function EditionCard({
   view: EditionView;
   trailing?: React.ReactNode;
 }) {
-  const { t, languageName } = useI18n();
+  const { t, narrationLanguageName } = useI18n();
   const { edition, work, authors, narrators, source } = view;
 
   return (
@@ -51,7 +52,19 @@ export function EditionCard({
         </p>
         <div className="card__tags">
           <span className="badge badge--language">
-            {t('common.language')}: {languageName(edition.narrationLanguage)}
+            {t('common.language')}: {narrationLanguageName(edition.narrationLanguage)}
+          </span>
+          {/*
+            Duration is always shown, including as "unknown". Hiding it when it
+            is missing would make a filtered list look incomplete.
+          */}
+          <span className="badge badge--duration">
+            <DurationLabel
+              seconds={editionDurationForQuery(view)}
+              origin={view.edition.durationOrigin}
+              showLabel={false}
+              className="badge__inner"
+            />
           </span>
           <RightsBadge status={edition.rightsStatus} />
           {edition.releaseYear ? <span className="badge">{edition.releaseYear}</span> : null}

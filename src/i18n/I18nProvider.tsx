@@ -2,6 +2,7 @@ import { useMemo, type ReactNode } from 'react';
 import type { LanguageCode } from '../domain/language';
 import { languageName, translate } from './index';
 import { I18nContext, type I18nContextValue } from './i18nContext';
+import type { TranslateParams, TranslationKey } from './keys';
 
 /**
  * Localization provider.
@@ -18,14 +19,17 @@ export function I18nProvider({
   locale: LanguageCode;
   children: ReactNode;
 }) {
-  const value = useMemo<I18nContextValue>(
-    () => ({
+  const value = useMemo<I18nContextValue>(() => {
+    const t = (key: TranslationKey, params?: TranslateParams, count?: number) =>
+      translate(locale, key, params, count);
+    return {
       locale,
-      t: (key, params, count) => translate(locale, key, params, count),
+      t,
       languageName: (code) => languageName(code, locale),
-    }),
-    [locale],
-  );
+      narrationLanguageName: (code) =>
+        code ? languageName(code, locale) : t('common.languageUnknown'),
+    };
+  }, [locale]);
 
   return <I18nContext.Provider value={value}>{children}</I18nContext.Provider>;
 }

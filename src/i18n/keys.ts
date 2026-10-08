@@ -32,6 +32,8 @@ export const ru = {
   'common.source': 'Источник',
   'common.originalSource': 'Страница на источнике',
   'common.language': 'Язык',
+  'common.languageUnknown': 'Язык неизвестен',
+  'common.durationUnknown': 'Длительность неизвестна',
   'common.narrator': 'Диктор',
   'common.narratedBy': 'Читает',
   'common.author': 'Автор',
@@ -298,6 +300,54 @@ export const ru = {
   'settings.languageIndependentNote':
     'Язык интерфейса и языки аудиокниг — независимые настройки.',
   'settings.stats': 'В каталоге: {editions} аудиоизданий на {languages} языках.',
+
+  // --- duration -------------------------------------------------------------
+  'duration.label': 'Длительность',
+  'duration.from': 'От',
+  'duration.to': 'До',
+  'duration.minutes': 'мин',
+  'duration.hours': 'ч',
+  'duration.seconds': 'с',
+  'duration.unknown': 'Длительность неизвестна',
+  'duration.approximate': 'около',
+  'duration.estimated': 'подсчитано по главам',
+  'duration.cardLabel': 'Длительность',
+  'duration.filter.any': 'Любая продолжительность',
+  'duration.filter.under15': 'До 15 минут',
+  'duration.filter.15to30': '15–30 минут',
+  'duration.filter.30to60': '30–60 минут',
+  'duration.filter.1to3h': '1–3 часа',
+  'duration.filter.3to10h': '3–10 часов',
+  'duration.filter.over10h': 'Более 10 часов',
+  'duration.filter.custom': 'Свой диапазон',
+  'duration.filter.reset': 'Сбросить фильтр',
+  'duration.filter.active': 'Фильтр по длительности активен',
+  'duration.filter.customHint': 'Укажите диапазон в минутах, например от 20 до 45.',
+  'duration.filter.invalid': 'Неверный диапазон: «до» должно быть не меньше «от».',
+  'duration.filter.excludesUnknown':
+    'Аудиокниги с неизвестной длительностью не попадают в заданный диапазон.',
+
+  // --- sorting --------------------------------------------------------------
+  'sort.label': 'Сортировка',
+  'sort.catalogue': 'По названию',
+  'sort.shortest': 'Сначала короткие',
+  'sort.longest': 'Сначала длинные',
+  'sort.partialCatalogue':
+    'Сортировка по длительности действует только на {count} загруженных записей, а не на весь каталог {source}.',
+  'sort.partialCatalogueUnknownCount':
+    'Сортировка по длительности действует только на загруженную часть каталога {source}, а не на весь каталог.',
+  'sort.unknownLast': 'Записи с неизвестной длительностью — в конце списка.',
+
+  // --- provider catalogue ---------------------------------------------------
+  'provider.loading': 'Загрузка каталога источника…',
+  'provider.loaded': 'Загружено записей из {source}: {count}.',
+  'provider.refresh': 'Обновить каталог',
+  'provider.refreshing': 'Обновление…',
+  'provider.error': 'Не удалось загрузить каталог {source}: {reason}',
+  'provider.partialNotice':
+    'Показана только часть каталога. Сортировка «сначала короткие» и «сначала длинные» относится к загруженным записям.',
+  'provider.offlineNotice':
+    'Каталог источника недоступен. Показаны сохранённые локально данные.',
 
   // --- rights labels --------------------------------------------------------
   'rights.publicDomain': 'Общественное достояние',

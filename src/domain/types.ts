@@ -12,7 +12,15 @@
  *  - Playback progress belongs to an AudioEdition, never to a Work.
  */
 
+import type { DurationOrigin } from './duration';
 import type { LanguageCode } from './language';
+
+/**
+ * Catalogue sort order, as remembered between sessions.
+ * Duplicated here (rather than imported from `search.ts`) to keep this module
+ * free of behaviour; `search.ts` is the single runtime authority.
+ */
+export type CatalogueSort = 'catalogue' | 'shortest' | 'longest';
 
 export type EntityId = string;
 
@@ -110,15 +118,31 @@ export interface AudioEdition {
    * This is the narration language, not the work's original language, and not
    * the interface language. Catalogue language filtering operates on this field
    * and nothing else. Adapters must normalise provider values before setting it.
+   *
+   * Optional since Alpha 0.2.0, because a source may genuinely not know: a
+   * LibriVox "Multilingual" project has no single narration language, and
+   * inventing one would be a false claim. An edition without this field is
+   * excluded from any narration-language filter and shown as "unknown language"
+   * rather than being attributed to a language that was never verified.
    */
-  narrationLanguage: LanguageCode;
+  narrationLanguage?: LanguageCode;
   /** Release/publication information as reported by the source. */
   releaseYear?: number;
   publisher?: string;
   /** Cover art reference. Referenced remotely, never re-hosted by us. */
   coverUrl?: string;
-  /** Total duration in seconds, when the source reports it. */
+  /**
+   * Total duration in seconds.
+   *
+   * Optional and never zero: an unknown duration stays `undefined` and is shown
+   * as unknown, not as "0 min". Belongs to the audio edition, not the work.
+   */
   durationSeconds?: number;
+  /**
+   * How `durationSeconds` was obtained. `'reported'` means the source stated the
+   * total, `'summed'` means it was derived from a complete track list.
+   */
+  durationOrigin?: DurationOrigin;
   /**
    * Per-edition legal/access metadata. An edition may differ from its source
    * (for example a source that hosts both public-domain and restricted items).
@@ -126,6 +150,8 @@ export interface AudioEdition {
   rightsStatus: RightsStatus;
   licenseName?: string;
   licenseUrl?: string;
+  /** Edition-specific attribution text, used when a reader must be named. */
+  attribution?: string;
   /** URL of the edition's page on the source. */
   sourceUrl?: string;
   /** Number of tracks as reported by the source, if not expanded yet. */
@@ -161,7 +187,10 @@ export interface Track {
  * otherwise the edition's language. This is the only place that fallback rule
  * lives, so callers cannot accidentally invent a third interpretation.
  */
-export function trackNarrationLanguage(track: Track, edition: AudioEdition): LanguageCode {
+export function trackNarrationLanguage(
+  track: Track,
+  edition: AudioEdition,
+): LanguageCode | undefined {
   return track.narrationLanguage ?? edition.narrationLanguage;
 }
 
@@ -214,6 +243,13 @@ export interface Preferences {
   skipBackwardSeconds: number;
   /** Remembered as an explicit "continue listening" target. */
   lastAudioEditionId?: EntityId;
+  /**
+   * Remembered catalogue sort order.
+   *
+   * `'catalogue'` is the default alphabetical order; the duration orders are
+   * offered only because a user chose them, and are restored on next launch.
+   */
+  catalogueSort?: CatalogueSort;
   /** Interface language, as a normalised locale code. */
   uiLocale: LanguageCode;
   /**

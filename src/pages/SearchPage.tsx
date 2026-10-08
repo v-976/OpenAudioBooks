@@ -1,29 +1,36 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { EditionCard } from '../components/EditionCard';
+import { DurationFilter, DurationSort } from '../components/DurationFilter';
 import { useCatalogue } from '../app/catalogueContext';
+import { useUserData } from '../app/userData';
 import { usePlayer } from '../player/playerContext';
 import { useCatalogueLanguageFilter } from '../app/catalogueLanguage';
-import { allGenres, searchEditions, type EditionView } from '../domain/search';
+import { allGenres, searchEditions, type EditionSort, type EditionView } from '../domain/search';
+import { MINUTE, rangeFromMinutes } from '../domain/durationPresets';
 import { useI18n } from '../i18n/i18nContext';
-import type { LanguageCode } from '../domain/language';
-import { normalizeLanguageCode } from '../domain/language';
+import { normalizeLanguageCode, type LanguageCode } from '../domain/language';
 
 /**
  * Search / discovery.
  *
  * Facets are explicit so that `narrator + language`, `author + language`,
- * `genre + language` and `source + language` all work, which is a hard
- * requirement for a narrator-centric, multilingual catalogue.
+ * `genre + language`, `source + language` and every one of those combined with a
+ * duration range all work without special-casing.
  *
  * The language facet filters on `AudioEdition.narrationLanguage` only. The
  * interface language is never involved.
+ *
+ * The duration range and sort live in the URL so a filtered view is shareable,
+ * while the sort preference is ALSO stored locally so it is restored on the next
+ * launch. The URL wins when both are present.
  */
 export function SearchPage() {
-  const { index } = useCatalogue();
+  const { index, providerState, isDevelopmentData } = useCatalogue();
   const player = usePlayer();
   const { t, languageName } = useI18n();
   const languageFilter = useCatalogueLanguageFilter();
+  const { preferences, updatePreferences } = useUserData();
   const [params, setParams] = useSearchParams();
 
   const text = params.get('q') ?? '';
@@ -32,6 +39,9 @@ export function SearchPage() {
   const genre = params.get('genre') ?? '';
   const sourceId = params.get('source') ?? '';
   const series = params.get('series') ?? '';
+  const minMinutes = params.get('durMin') ?? '';
+  const maxMinutes = params.get('durMax') ?? '';
+  const sortParam = params.get('sort') ?? '';
 
   // The URL may carry a language facet for shareable links. It is applied on top
   // of the stored preference rather than replacing it, so the URL and the
@@ -46,14 +56,61 @@ export function SearchPage() {
   );
   const effectiveLanguages = urlLanguages.length > 0 ? urlLanguages : languageFilter.selected;
 
+  // URL sort wins; otherwise the remembered preference; otherwise the default.
+  const effectiveSort: EditionSort =
+    sortParam === 'shortest' || sortParam === 'longest' || sortParam === 'catalogue'
+      ? sortParam
+      : (preferences.catalogueSort ?? 'catalogue');
+
   const [textDraft, setTextDraft] = useState(text);
 
-  const update = (key: string, value: string) => {
-    const next = new URLSearchParams(params);
-    if (value) next.set(key, value);
-    else next.delete(key);
-    setParams(next, { replace: true });
-  };
+  const update = useCallback(
+    (key: string, value: string) => {
+      const next = new URLSearchParams(params);
+      if (value) next.set(key, value);
+      else next.delete(key);
+      setParams(next, { replace: true });
+    },
+    [params, setParams],
+  );
+
+  const durationRange = useMemo(() => {
+    const min = Number(minMinutes);
+    const max = Number(maxMinutes);
+    return rangeFromMinutes(
+      Number.isFinite(min) && minMinutes !== '' ? min : 0,
+      Number.isFinite(max) && maxMinutes !== '' ? max : 0,
+    );
+  }, [minMinutes, maxMinutes]);
+
+  const setDurationRange = useCallback(
+    (next: { minSeconds?: number; maxSeconds?: number } | undefined) => {
+      const params2 = new URLSearchParams(params);
+      if (!next || (next.minSeconds === undefined && next.maxSeconds === undefined)) {
+        // Resetting the duration filter must not disturb any other facet.
+        params2.delete('durMin');
+        params2.delete('durMax');
+      } else {
+        params2.set(
+          'durMin',
+          String(Math.round((next.minSeconds ?? 0) / MINUTE)),
+        );
+        if (next.maxSeconds === undefined) params2.delete('durMax');
+        else params2.set('durMax', String(Math.round(next.maxSeconds / MINUTE)));
+      }
+      setParams(params2, { replace: true });
+    },
+    [params, setParams],
+  );
+
+  const setSort = useCallback(
+    (next: EditionSort) => {
+      update('sort', next === 'catalogue' ? '' : next);
+      // Remembered so the next launch opens in the same order.
+      void updatePreferences({ catalogueSort: next });
+    },
+    [update, updatePreferences],
+  );
 
   const results = useMemo(
     () =>
@@ -65,8 +122,21 @@ export function SearchPage() {
         ...(sourceId ? { sourceIds: [sourceId] } : {}),
         ...(series ? { series } : {}),
         ...(effectiveLanguages.length > 0 ? { narrationLanguages: effectiveLanguages } : {}),
+        ...(durationRange ? { durationRange } : {}),
+        sort: effectiveSort,
       }),
-    [authorId, effectiveLanguages, genre, index, narratorId, series, sourceId, text],
+    [
+      authorId,
+      durationRange,
+      effectiveLanguages,
+      effectiveSort,
+      genre,
+      index,
+      narratorId,
+      series,
+      sourceId,
+      text,
+    ],
   );
 
   const narrators = useMemo(
@@ -103,7 +173,19 @@ export function SearchPage() {
   };
 
   const hasFilters =
-    Boolean(text || narratorId || authorId || genre || sourceId || series || effectiveLanguages.length);
+    Boolean(
+      text ||
+        narratorId ||
+        authorId ||
+        genre ||
+        sourceId ||
+        series ||
+        minMinutes ||
+        maxMinutes ||
+        effectiveLanguages.length,
+    ) || effectiveSort !== 'catalogue';
+
+  const durationActive = Boolean(durationRange);
 
   return (
     <div className="page">
@@ -246,6 +328,20 @@ export function SearchPage() {
         </label>
       </div>
 
+      <div className="filters filters--duration">
+        <DurationFilter range={durationRange} onRangeChange={setDurationRange} />
+        <DurationSort
+          sort={effectiveSort}
+          onSortChange={setSort}
+          // A duration sort may never be presented as a provider-wide ranking
+          // unless the whole provider catalogue is loaded, which it never is.
+          // Development fixtures are likewise not a complete catalogue.
+          partial={providerState.partial || isDevelopmentData || providerState.status !== 'ready'}
+          loadedCount={providerState.status === 'ready' ? providerState.loadedCount : undefined}
+          sourceName={index.sourcesById.get('librivox')?.name}
+        />
+      </div>
+
       <p className="notice notice--info">{t('search.languageNotice')}</p>
 
       <div className="results-header">
@@ -256,6 +352,10 @@ export function SearchPage() {
           </button>
         ) : null}
       </div>
+
+      {durationActive && effectiveSort !== 'catalogue' ? (
+        <p className="section__footnote">{t('sort.unknownLast')}</p>
+      ) : null}
 
       {results.length === 0 ? (
         <p className="notice">{t('search.noResults')}</p>

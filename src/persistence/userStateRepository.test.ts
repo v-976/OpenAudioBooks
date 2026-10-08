@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { IDBFactory } from 'fake-indexeddb';
-import { DB_VERSION, MIGRATIONS, resetDatabaseHandle } from './db';
+import { DB_VERSION, MIGRATIONS, openDatabase, resetDatabaseHandle } from './db';
 import {
   addBookmark,
   clearAllUserData,
@@ -22,12 +22,37 @@ beforeEach(() => {
 });
 
 describe('schema migrations', () => {
-  it('declares exactly one migration per schema version, in order', () => {
-    expect(MIGRATIONS.map((migration) => migration.version)).toEqual([1]);
-    expect(DB_VERSION).toBe(1);
+  it('declares contiguous migrations from 1 with DB_VERSION matching', () => {
+    const versions = MIGRATIONS.map((migration) => migration.version);
+    // Contiguous, ascending and starting at 1: an append-only ledger.
+    expect(versions).toEqual([...Array(versions.length)].map((_, index) => index + 1));
+    expect(DB_VERSION).toBe(versions[versions.length - 1]);
+  });
+
+  it('documents data impact for every migration', () => {
     for (const migration of MIGRATIONS) {
-      expect(migration.dataImpact.length).toBeGreaterThan(0);
+      expect(migration.dataImpact.trim().length).toBeGreaterThan(20);
+      expect(migration.description.trim().length).toBeGreaterThan(0);
     }
+  });
+
+  it('keeps playback state stores untouched by the provider-cache migration', () => {
+    // The 0.2.0 migration must only add a cache store; if it ever rewrote
+    // userState, bookmarks or history, this assertion would catch it.
+    const cacheMigration = MIGRATIONS.find((migration) => migration.version === 2);
+    expect(cacheMigration).toBeDefined();
+    expect(cacheMigration?.dataImpact).toMatch(/no existing store/i);
+    expect(cacheMigration?.dataImpact).toMatch(/metadata only/i);
+  });
+
+  it('applies migrations to a database opened at the current version', async () => {
+    const { DB_NAME, STORES } = await import('./db');
+    const db = await openDatabase();
+    expect(db.version).toBe(DB_VERSION);
+    expect([...db.objectStoreNames].sort()).toEqual(
+      [STORES.bookmarks, STORES.history, STORES.meta, STORES.providerCache, STORES.userState].sort(),
+    );
+    expect(DB_NAME).toBe('openaudiobooks');
   });
 });
 

@@ -18,7 +18,7 @@ export function NowPlayingPage() {
   const { index } = useCatalogue();
   const { bookmarksFor, addBookmark, removeBookmark, stateFor, toggleFavorite, preferences, continueListening } =
     useUserData();
-  const { t, languageName } = useI18n();
+  const { t, narrationLanguageName } = useI18n();
   const [noteDraft, setNoteDraft] = useState('');
 
   const current = player.current;
@@ -123,7 +123,7 @@ export function NowPlayingPage() {
         </p>
         <p className="now-playing__language">
           <span className="label">{t('search.field.narrationLanguage')}: </span>
-          {languageName(current.edition.narrationLanguage)}
+          {narrationLanguageName(current.edition.narrationLanguage)}
         </p>
 
         {player.error ? (

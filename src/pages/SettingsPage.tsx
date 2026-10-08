@@ -43,10 +43,11 @@ export function SettingsPage() {
   const editionCounts = useMemo(() => {
     const counts = new Map<LanguageCode, number>();
     for (const edition of index.catalogue.audioEditions) {
-      counts.set(
-        edition.narrationLanguage,
-        (counts.get(edition.narrationLanguage) ?? 0) + 1,
-      );
+      // Editions with no verified narration language are counted separately and
+      // never attributed to a language.
+      const language = edition.narrationLanguage;
+      if (!language) continue;
+      counts.set(language, (counts.get(language) ?? 0) + 1);
     }
     return counts;
   }, [index]);

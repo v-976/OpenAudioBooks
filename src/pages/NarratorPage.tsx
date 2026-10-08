@@ -24,7 +24,7 @@ export function NarratorPage() {
   const { narratorId = '' } = useParams();
   const { index } = useCatalogue();
   const player = usePlayer();
-  const { t, languageName } = useI18n();
+  const { t, narrationLanguageName } = useI18n();
 
   const narrator = index.narratorsById.get(decodeURIComponent(narratorId));
   const filters = useMemo(
@@ -81,7 +81,7 @@ export function NarratorPage() {
         <p className="stats">
           <span className="page__meta-label">{t('search.field.narrationLanguage')}: </span>
           <span className="page__meta-value">
-            {languages.map((code) => languageName(code)).join(', ')}
+            {languages.map((code) => narrationLanguageName(code)).join(', ')}
           </span>
         </p>
       ) : null}

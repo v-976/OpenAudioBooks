@@ -4,7 +4,8 @@ import { useCatalogue } from '../app/catalogueContext';
 import { usePlayer } from '../player/playerContext';
 import { useUserData } from '../app/userData';
 import { useResumeTarget } from '../player/useResumeTarget';
-import { totalDurationSeconds, viewForEdition } from '../domain/search';
+import { editionDurationForQuery, viewForEdition } from '../domain/search';
+import { DurationLabel } from '../components/DurationLabel';
 import { formatDuration } from '../player/playerMachine';
 import { RightsBadge } from '../components/RightsBadge';
 import { rightsKey } from '../domain/rights';
@@ -24,7 +25,7 @@ export function EditionPage() {
   const { index } = useCatalogue();
   const player = usePlayer();
   const { stateFor } = useUserData();
-  const { t, languageName } = useI18n();
+  const { t, languageName, narrationLanguageName } = useI18n();
   const decoded = decodeURIComponent(editionId);
 
   const view = useMemo(() => viewForEdition(index, decoded), [decoded, index]);
@@ -36,7 +37,6 @@ export function EditionPage() {
   }
 
   const { edition, work, authors, narrators, source, tracks } = view;
-  const duration = edition.durationSeconds ?? totalDurationSeconds(index, edition.id);
   const otherEditions = (index.editionsByWorkId.get(work.id) ?? []).filter(
     (item) => item.id !== edition.id,
   );
@@ -72,13 +72,24 @@ export function EditionPage() {
         </dd>
 
         <dt>{t('search.field.narrationLanguage')}</dt>
-        <dd>{languageName(edition.narrationLanguage)}</dd>
+        <dd>{narrationLanguageName(edition.narrationLanguage)}</dd>
 
         <dt>{t('common.originalLanguage')}</dt>
         <dd>{work.originalLanguage ? languageName(work.originalLanguage) : t('common.notSpecified')}</dd>
 
         <dt>{t('common.duration')}</dt>
-        <dd>{formatDuration(duration)}</dd>
+        <dd>
+          {/*
+            An unknown total is stated as unknown rather than shown as 0:00, and a
+            summed figure is marked as an estimate so it never looks as precise as
+            a source-reported one.
+          */}
+          <DurationLabel
+            seconds={editionDurationForQuery(view)}
+            origin={view.edition.durationOrigin}
+            showLabel={false}
+          />
+        </dd>
 
         <dt>{t('common.release')}</dt>
         <dd>
@@ -224,7 +235,7 @@ export function EditionPage() {
                     {itemView.narrators.map((narrator) => narrator.name).join(', ') ||
                       t('common.unnamedNarrator')}
                     {' · '}
-                    {languageName(item.narrationLanguage)} · {t(rightsKey(item.rightsStatus))}
+                    {narrationLanguageName(edition.narrationLanguage)} · {t(rightsKey(item.rightsStatus))}
                   </Link>
                   <span className="plain-list__meta">
                     {itemState?.positionSeconds

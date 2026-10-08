@@ -28,7 +28,7 @@ export function WorkPage() {
   const { workId = '' } = useParams();
   const { index } = useCatalogue();
   const player = usePlayer();
-  const { t, languageName } = useI18n();
+  const { t, languageName, narrationLanguageName } = useI18n();
 
   const work = index.worksById.get(decodeURIComponent(workId));
   const authors = useMemo(() => (work ? authorsForWork(index, work.id) : []), [index, work]);
@@ -135,7 +135,7 @@ export function WorkPage() {
           <p className="section__footnote">
             <span className="page__meta-label">{t('search.field.narrationLanguage')}: </span>
             <span className="page__meta-value">
-              {editionLanguages.map((code) => languageName(code)).join(', ')}
+              {editionLanguages.map((code) => narrationLanguageName(code)).join(', ')}
             </span>
           </p>
         ) : null}
