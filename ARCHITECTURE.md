@@ -195,7 +195,7 @@ screen should change.
 | --- | --- | --- | --- |
 | `DevCatalogueAdapter` | `src/data/devCatalogue.ts` | none (bundled) | Fictional fixtures, `dev:`-prefixed |
 | `LibriVoxAdapter` | `src/sources/librivox/` | JSONP over `<script>` (§13.2) | Real provider, partial catalogue by design |
-| `MDSAdapter` | `src/sources/mds/` | Bundled metadata-only index; audio uses the source resolver | Real provider, index snapshot dated in `index.json` |
+| `MDSAdapter` | `src/sources/mds/` | On-demand same-origin JSON index; audio uses the source resolver | Real provider, index snapshot dated in the JSON metadata |
 
 An adapter that needs extra lifecycle beyond the contract (`loadCatalogue`,
 `getScanState`) declares it as an optional capability and the provider narrows on
@@ -206,7 +206,7 @@ it, so the contract stays honest rather than being widened for one provider.
 `MDSAdapter` exists because the archive's public catalogue pages and JSON API do
 not permit cross-origin reads from a PWA. `scripts/generate-mds-index.mjs` walks
 only work URLs published in the archive's sitemap, sequentially and with a
-checkpoint. It writes public metadata to `src/sources/mds/index.json`; the script
+checkpoint. It writes public metadata to `public/data/mds-index.json`; the script
 is manual and never runs in the browser or as part of the production build.
 
 The index is a local search representation, not an audio mirror. It records its

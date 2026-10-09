@@ -7,6 +7,7 @@ import { PlayerProvider } from '../player/PlayerProvider';
 import { I18nProvider } from '../i18n/I18nProvider';
 import { AppRoutes } from '../app/AppRoutes';
 import type { LanguageCode } from '../domain/language';
+import type { MdsIndex } from '../sources/mds/types';
 
 /**
  * Test helpers that render the real provider stack.
@@ -19,6 +20,7 @@ import type { LanguageCode } from '../domain/language';
 
 export interface RenderAppOptions {
   includeStaticSources?: boolean;
+  mdsIndex?: MdsIndex;
 }
 
 function withProviders(
@@ -27,7 +29,10 @@ function withProviders(
   options: RenderAppOptions = {},
 ) {
   return (
-    <CatalogueProvider includeStaticSources={options.includeStaticSources ?? false}>
+    <CatalogueProvider
+      includeStaticSources={options.includeStaticSources ?? false}
+      mdsIndex={options.mdsIndex}
+    >
       <UserDataProvider>
         <I18nProvider locale={locale}>
           <PlayerProvider>{children}</PlayerProvider>

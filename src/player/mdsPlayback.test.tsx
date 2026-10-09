@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { IDBFactory } from 'fake-indexeddb';
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
-import indexJson from '../sources/mds/index.json';
+import indexJson from '../../public/data/mds-index.json';
 import type { MdsIndex } from '../sources/mds/types';
 import { renderApp, waitForUserData } from '../test/renderApp';
 import { resetDatabaseHandle } from '../persistence/db';
@@ -33,6 +33,7 @@ describe('MDS playback through the shared player', () => {
     if (!record) throw new Error('The MDS index has no uniquely titled record');
     renderApp(`/search?q=${encodeURIComponent(record.title)}&source=mds`, 'ru', {
       includeStaticSources: true,
+      mdsIndex: index,
     });
     await waitForUserData();
 

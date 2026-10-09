@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import indexJson from './index.json';
+import indexJson from '../../../public/data/mds-index.json';
 import { normalizeLanguageCode } from '../../domain/language';
 import { MDSAdapter } from './MDSAdapter';
 import { mdsPlaybackUrl } from './source';

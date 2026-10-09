@@ -34,7 +34,11 @@ export interface LanguageDefinition {
  * separate from `LANGUAGES`: a catalogue can contain audio in a language the UI
  * has no translation for.
  */
-export const TRANSLATED_UI_LOCALES: LanguageDefinition[] = [{ code: 'ru', englishName: 'Russian' }];
+export const TRANSLATED_UI_LOCALES: LanguageDefinition[] = [
+  { code: 'ru', englishName: 'Russian' },
+  { code: 'en', englishName: 'English' },
+  { code: 'ro', englishName: 'Romanian' },
+];
 
 /** The locale every missing translation falls back to. */
 export const FALLBACK_UI_LOCALE = 'ru';
@@ -111,25 +115,16 @@ const ALIASES: Record<string, LanguageCode> = {
 /** English names, mapped through the registry. */
 const ENGLISH_NAME_ALIASES: Record<string, LanguageCode> = Object.fromEntries(
   LANGUAGES.map((language) => [language.englishName.toLowerCase(), language.code]),
+  [['romanian', 'ro']],
 );
 
 /** Names in the locales the UI itself is translated into. */
 const LOCALISED_NAME_ALIASES: Record<string, LanguageCode> = {
   русский: 'ru',
   английский: 'en',
-  финский: 'fi',
-  немецкий: 'de',
-  французский: 'fr',
-  испанский: 'es',
-  итальянский: 'it',
-  норвежский: 'no',
-  шведский: 'sv',
-  украинский: 'uk',
-  польский: 'pl',
-  чешский: 'cs',
-  португальский: 'pt',
-  китайский: 'zh',
-  японский: 'ja',
+  engleză: 'en',
+  română: 'ro',
+  romanian: 'ro',
 };
 
 /**

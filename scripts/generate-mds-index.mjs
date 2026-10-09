@@ -3,7 +3,7 @@ import { dirname, resolve } from 'node:path';
 
 const SOURCE_URL = 'https://mds-old.ru/';
 const SITEMAP_URL = new URL('sitemap.xml', SOURCE_URL).href;
-const DEFAULT_OUTPUT = resolve('src/sources/mds/index.json');
+const DEFAULT_OUTPUT = resolve('public/data/mds-index.json');
 const DEFAULT_CHECKPOINT = resolve('scripts/.cache/mds-index-progress.json');
 const USER_AGENT =
   'OpenAudioBooks metadata indexer/0.2 (+https://github.com/v-976/OpenAudioBooks)';

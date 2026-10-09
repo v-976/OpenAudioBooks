@@ -6,6 +6,7 @@ import {
   type LanguageCode,
 } from '../domain/language';
 import { enBundle } from './en';
+import { roBundle } from './ro';
 import { ruBundle } from './ru';
 import type {
   LocaleBundle,
@@ -35,6 +36,7 @@ import type {
 export const BUNDLES: Record<LanguageCode, LocaleBundle> = {
   ru: ruBundle,
   en: enBundle,
+  ro: roBundle,
 };
 
 /** Russian plural rules (CLDR): one / few / many / other. */
@@ -54,6 +56,11 @@ function russianPlural(count: number): PluralCategory {
 const PLURAL_RULES: Record<LanguageCode, (count: number) => PluralCategory> = {
   ru: russianPlural,
   en: (count: number) => (count === 1 ? 'one' : 'other'),
+  ro: (count: number) => {
+    if (count === 1) return 'one';
+    if (count === 0 || (count % 100 > 0 && count % 100 < 20)) return 'few';
+    return 'many';
+  },
 };
 
 const IDENTIFIER_PLACEHOLDER = /\{(\w+)\}/g;
@@ -66,10 +73,7 @@ function interpolate(template: string, params?: TranslateParams): string {
 }
 
 function selectValue(value: TranslationValue, count?: number): string {
-  if (typeof value === 'string') return value;
-  if (count === undefined) {
-    return value.other ?? value.one ?? value.many ?? value.few ?? '';
-  }
+  if (count === undefined) return value.other ?? value.one ?? value.many ?? value.few ?? '';
   const category = (PLURAL_RULES[FALLBACK_UI_LOCALE] ?? russianPlural)(count);
   return value[category] ?? value.other ?? value.one ?? value.many ?? value.few ?? '';
 }
@@ -152,21 +156,22 @@ export function resolveUiLocale(input: unknown): LanguageCode {
  * internally; only display uses these names.
  */
 const LANGUAGE_NAMES: Record<LanguageCode, Partial<Record<LanguageCode, string>>> = {
-  ru: { ru: 'Русский', en: 'Russian' },
-  en: { ru: 'Английский', en: 'English' },
-  fi: { ru: 'Финский', en: 'Finnish' },
-  de: { ru: 'Немецкий', en: 'German' },
-  fr: { ru: 'Французский', en: 'French' },
-  es: { ru: 'Испанский', en: 'Spanish' },
-  it: { ru: 'Итальянский', en: 'Italian' },
-  no: { ru: 'Норвежский', en: 'Norwegian' },
-  sv: { ru: 'Шведский', en: 'Swedish' },
-  uk: { ru: 'Украинский', en: 'Ukrainian' },
-  pl: { ru: 'Польский', en: 'Polish' },
-  cs: { ru: 'Чешский', en: 'Czech' },
-  pt: { ru: 'Португальский', en: 'Portuguese' },
-  zh: { ru: 'Китайский', en: 'Chinese' },
-  ja: { ru: 'Японский', en: 'Japanese' },
+  ru: { ru: 'Русский', en: 'Russian', ro: 'Rusu' },
+  en: { ru: 'Английский', en: 'English', ro: 'Engleză' },
+  ro: { ru: 'Румынский', en: 'Romanian', ro: 'Română' },
+  fi: { ru: 'Финский', en: 'Finnish', ro: 'Finlandeză' },
+  de: { ru: 'Немецкий', en: 'German', ro: 'Germană' },
+  fr: { ru: 'Французский', en: 'French', ro: 'Franceză' },
+  es: { ru: 'Испанский', en: 'Spanish', ro: 'Spaniolă' },
+  it: { ru: 'Итальянский', en: 'Italian', ro: 'Italiană' },
+  no: { ru: 'Норвежский', en: 'Norwegian', ro: 'Norvegiană' },
+  sv: { ru: 'Шведский', en: 'Swedish', ro: 'Suedeză' },
+  uk: { ru: 'Украинский', en: 'Ukrainian', ro: 'Ukrainiană' },
+  pl: { ru: 'Польский', en: 'Polish', ro: 'Poloneză' },
+  cs: { ru: 'Чешский', en: 'Czech', ro: 'Cehă' },
+  pt: { ru: 'Португальский', en: 'Portuguese', ro: 'Portugheză' },
+  zh: { ru: 'Китайский', en: 'Chinese', ro: 'Chineză' },
+  ja: { ru: 'Японский', en: 'Japanese', ro: 'Japoneză' },
 };
 
 export function languageName(code: LanguageCode, uiLocale: LanguageCode): string {

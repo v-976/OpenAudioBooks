@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useLocation } from 'react-router-dom';
 import { buildIndex, viewForEdition, type EditionView } from '../domain/search';
 import type { Catalogue } from '../domain/types';
 import { DevCatalogueAdapter, devCatalogue } from '../data/devCatalogue';
 import { AdapterRegistry } from '../sources/adapter';
 import { LibriVoxAdapter } from '../sources/librivox/LibriVoxAdapter';
 import { MDSAdapter } from '../sources/mds/MDSAdapter';
+import type { MdsIndex } from '../sources/mds/types';
 import { CatalogueContext, type CatalogueContextValue } from './catalogueContext';
 import type { ProviderLoadState } from './providerLoadState';
 
@@ -29,18 +31,22 @@ const LIBRIVOX_PAGE_SIZE = 50;
 export function CatalogueProvider({
   children,
   includeStaticSources = true,
+  mdsIndex,
 }: {
   children: ReactNode;
   /** Tests that exercise legacy fixtures may opt out; production always uses the default. */
   includeStaticSources?: boolean;
+  /** Test-only injection; production loads the same-origin JSON on demand. */
+  mdsIndex?: MdsIndex;
 }) {
-  const registry = useMemo(() => createRegistry(includeStaticSources), [includeStaticSources]);
-  const adapters = useMemo(() => registry.enabled(), [registry]);
-  const mdsCatalogue = useMemo(
-    () => (registry.get('mds') as MDSAdapter | undefined)?.catalogue,
-    [registry],
+  const location = useLocation();
+  const registry = useMemo(
+    () => createRegistry(includeStaticSources, mdsIndex),
+    [includeStaticSources, mdsIndex],
   );
-  const [catalogue, setCatalogue] = useState<Catalogue>(() => mdsCatalogue ?? devCatalogue);
+  const adapters = useMemo(() => registry.enabled(), [registry]);
+  const [libriVoxCatalogue, setLibriVoxCatalogue] = useState<Catalogue>();
+  const [mdsCatalogue, setMdsCatalogue] = useState<Catalogue>();
   const [providerState, setProviderState] = useState<ProviderLoadState>({
     status: 'idle',
     sourceId: undefined,
@@ -59,8 +65,7 @@ export function CatalogueProvider({
       try {
         const fetched = await libriVox.loadCatalogue({ refresh });
         const scan = libriVox.getScanState();
-        const combined = mergeCatalogues([...(mdsCatalogue ? [mdsCatalogue] : []), fetched]);
-        setCatalogue(shouldShowDevCatalogue(combined) ? devCatalogue : combined);
+        setLibriVoxCatalogue(fetched);
         setProviderState({
           status: 'ready',
           sourceId: 'librivox',
@@ -82,7 +87,7 @@ export function CatalogueProvider({
         });
       }
     },
-    [mdsCatalogue, registry],
+    [registry],
   );
 
   useEffect(() => {
@@ -102,22 +107,51 @@ export function CatalogueProvider({
     };
   }, [loadProviderCatalogue, registry]);
 
+  useEffect(() => {
+    if (!includeStaticSources || !catalogueRouteNeedsMetadata(location.pathname)) return;
+    let cancelled = false;
+    const adapter = registry.get('mds');
+    if (!adapter?.fetchCatalogue) return;
+    void adapter
+      .fetchCatalogue()
+      .then((fetched) => {
+        if (!cancelled) setMdsCatalogue(fetched);
+      })
+      .catch((error) => {
+        // LibriVox or development data remain usable. The failure is local-only.
+        console.warn('MDS metadata index could not be loaded.', error);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [includeStaticSources, location.pathname, registry]);
+
   const refreshProviderCatalogue = useCallback(() => loadProviderCatalogue(true), [
     loadProviderCatalogue,
   ]);
 
+  const catalogue = useMemo(() => {
+    const realCatalogues = [mdsCatalogue, libriVoxCatalogue].filter(
+      (item): item is Catalogue => Boolean(item),
+    );
+    if (realCatalogues.length === 0) return devCatalogue;
+    const combined = mergeCatalogues(realCatalogues);
+    return shouldShowDevCatalogue(combined) ? devCatalogue : combined;
+  }, [libriVoxCatalogue, mdsCatalogue]);
+  const index = useMemo(() => buildIndex(catalogue), [catalogue]);
+
   const value = useMemo<CatalogueContextValue>(
     () => ({
-      index: buildIndex(catalogue),
+      index,
       adapters,
       isDevelopmentData: catalogue.isDevelopmentData && shouldShowDevCatalogue(catalogue),
       getEdition(editionId: string): EditionView | undefined {
-        return viewForEdition(buildIndex(catalogue), editionId);
+        return viewForEdition(index, editionId);
       },
       providerState,
       refreshProviderCatalogue,
     }),
-    [adapters, catalogue, providerState, refreshProviderCatalogue],
+    [adapters, catalogue, index, providerState, refreshProviderCatalogue],
   );
 
   return <CatalogueContext.Provider value={value}>{children}</CatalogueContext.Provider>;
@@ -139,14 +173,18 @@ function shouldShowDevCatalogue(catalogue: Catalogue): boolean {
  * Real adapters (LibriVox, Internet Archive, MDS, RSS feeds, ...) get added
  * here. Nothing else in the application needs to know they exist.
  */
-function createRegistry(includeStaticSources: boolean): AdapterRegistry {
+function createRegistry(includeStaticSources: boolean, mdsIndex?: MdsIndex): AdapterRegistry {
   const registry = new AdapterRegistry();
   registry.register(new DevCatalogueAdapter());
-  if (includeStaticSources) registry.register(new MDSAdapter());
+  if (includeStaticSources) registry.register(new MDSAdapter(mdsIndex));
   registry.register(
     new LibriVoxAdapter({ maxPages: LIBRIVOX_INITIAL_PAGES, pageSize: LIBRIVOX_PAGE_SIZE }),
   );
   return registry;
+}
+
+function catalogueRouteNeedsMetadata(pathname: string): boolean {
+  return pathname !== '/settings' && pathname !== '/about';
 }
 
 /**

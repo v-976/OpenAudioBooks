@@ -1,11 +1,16 @@
-import indexJson from './index.json';
 import { normalizeLanguageCode } from '../../domain/language';
 import type { Catalogue } from '../../domain/types';
 import type { AdapterPage, AdapterQuery, EditionBundle, SourceAdapter } from '../adapter';
 import { MDS_SOURCE, MDS_SOURCE_ID, mdsPlaybackUrl } from './source';
 import type { MdsIndex } from './types';
 
-const bundledIndex = indexJson as MdsIndex;
+export type MdsIndexLoader = () => Promise<MdsIndex>;
+
+async function loadBundledIndex(): Promise<MdsIndex> {
+  const response = await fetch(`${import.meta.env.BASE_URL}data/mds-index.json`);
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  return (await response.json()) as MdsIndex;
+}
 
 export function mdsWorkId(providerId: string): string {
   return `${MDS_SOURCE_ID}:work:${providerId}`;
@@ -94,23 +99,41 @@ export class MDSAdapter implements SourceAdapter {
   readonly displayName = MDS_SOURCE.name;
   readonly isDevelopmentData = false;
   readonly source = MDS_SOURCE;
-  readonly index: MdsIndex;
-  readonly catalogue: Catalogue;
+  private index?: MdsIndex;
+  private catalogue?: Catalogue;
+  private readonly loadIndex: MdsIndexLoader;
+  private loading?: Promise<Catalogue>;
 
-  constructor(index: MdsIndex = bundledIndex) {
+  constructor(index?: MdsIndex, loadIndex: MdsIndexLoader = loadBundledIndex) {
     this.index = index;
-    this.catalogue = catalogueFromMdsIndex(index);
+    this.catalogue = index ? catalogueFromMdsIndex(index) : undefined;
+    this.loadIndex = loadIndex;
   }
 
   isEnabled(): boolean {
-    return this.index.records.length > 0;
+    return true;
+  }
+
+  private async getCatalogue(): Promise<Catalogue> {
+    if (this.catalogue) return this.catalogue;
+    if (!this.loading) {
+      this.loading = this.loadIndex().then((index) => {
+        this.index = index;
+        this.catalogue = catalogueFromMdsIndex(index);
+        return this.catalogue;
+      });
+    }
+    return this.loading;
   }
 
   async listWorks(query: AdapterQuery = {}): Promise<AdapterPage<Catalogue['works'][number]>> {
+    const catalogue = await this.getCatalogue();
+    const index = this.index;
+    if (!index) return { items: [] };
     const text = query.text?.trim().toLocaleLowerCase('ru');
     const matchingIds = text
       ? new Set(
-          this.index.records
+          index.records
             .filter((record) =>
               [record.title, ...record.authors.map((author) => author.name)].some((value) =>
                 value.toLocaleLowerCase('ru').includes(text),
@@ -120,14 +143,15 @@ export class MDSAdapter implements SourceAdapter {
         )
       : undefined;
     const items = matchingIds
-      ? this.catalogue.works.filter((work) => matchingIds.has(work.id))
-      : this.catalogue.works;
+      ? catalogue.works.filter((work) => matchingIds.has(work.id))
+      : catalogue.works;
     return { items: query.limit ? items.slice(0, query.limit) : items };
   }
 
   async listAudioEditions(workId: string): Promise<AdapterPage<Catalogue['audioEditions'][number]>> {
+    const catalogue = await this.getCatalogue();
     return {
-      items: this.catalogue.audioEditions.filter(
+      items: catalogue.audioEditions.filter(
         (edition) => edition.workId === (workId.startsWith('mds:') ? workId : mdsWorkId(workId)),
       ),
     };
@@ -139,25 +163,27 @@ export class MDSAdapter implements SourceAdapter {
   }
 
   async listTracks(editionId: string): Promise<Catalogue['tracks']> {
+    const catalogue = await this.getCatalogue();
     const target = editionId.startsWith('mds:') ? editionId : mdsEditionId(editionId);
-    return this.catalogue.tracks.filter((track) => track.audioEditionId === target);
+    return catalogue.tracks.filter((track) => track.audioEditionId === target);
   }
 
   async getEdition(editionId: string): Promise<EditionBundle | undefined> {
+    const catalogue = await this.getCatalogue();
     const target = editionId.startsWith('mds:') ? editionId : mdsEditionId(editionId);
-    const edition = this.catalogue.audioEditions.find((item) => item.id === target);
+    const edition = catalogue.audioEditions.find((item) => item.id === target);
     if (!edition) return undefined;
-    const work = this.catalogue.works.find((item) => item.id === edition.workId);
+    const work = catalogue.works.find((item) => item.id === edition.workId);
     if (!work) return undefined;
     return {
       work,
       edition,
       narrators: [],
-      tracks: this.catalogue.tracks.filter((track) => track.audioEditionId === target),
+      tracks: catalogue.tracks.filter((track) => track.audioEditionId === target),
     };
   }
 
   async fetchCatalogue(): Promise<Catalogue> {
-    return this.catalogue;
+    return this.getCatalogue();
   }
 }
