@@ -188,12 +188,15 @@ export function DurationSort({
   const partialNotice = useMemo(() => {
     if (!partial) return undefined;
     if (loadedCount !== undefined) {
+      if (!sourceName) return t('sort.partialLoadedRecords', { count: loadedCount });
       return t('sort.partialCatalogue', {
         count: loadedCount,
         source: sourceName ?? '',
       });
     }
-    return t('sort.partialCatalogueUnknownCount', { source: sourceName ?? '' });
+    return sourceName
+      ? t('sort.partialCatalogueUnknownCount', { source: sourceName })
+      : t('sort.partialLoadedRecordsUnknownCount');
   }, [loadedCount, partial, sourceName, t]);
 
   return (

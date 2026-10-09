@@ -6,6 +6,7 @@ import {
   useState,
   type ReactNode,
 } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useCatalogue } from '../app/catalogueContext';
 import { useUserData } from '../app/userData';
 import { savePlaybackPosition } from '../persistence/userStateRepository';
@@ -41,6 +42,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const { index } = useCatalogue();
   const { preferences, stateFor, now, updatePreferences } = useUserData();
   const { t } = useI18n();
+  const navigate = useNavigate();
 
   // A real element in the document rather than `new Audio()`: it keeps the
   // media session and lock-screen integration working on mobile browsers, and
@@ -120,9 +122,6 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       setReady(false);
       setPositionSeconds(Math.max(0, startAtSeconds));
       pendingRef.current = { trackId: nextTrackId, positionSeconds: startAtSeconds };
-      audio.src = nextTrack.audioUrl;
-      audio.load();
-
       const applyStart = () => {
         try {
           audio.currentTime = Math.max(0, startAtSeconds);
@@ -130,16 +129,21 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
           // Some browsers reject seeking before metadata; metadata event retries.
         }
         audio.playbackRate = playbackRate;
-        if (autoplay) {
-          void audio.play().catch(() => {
-            // Autoplay policies require a user gesture on iOS Safari.
-            setPlaying(false);
-            setError(t('player.error.playbackBlocked'));
-          });
-        }
       };
 
       audio.addEventListener('loadedmetadata', applyStart, { once: true });
+      audio.src = nextTrack.audioUrl;
+      audio.load();
+      audio.playbackRate = playbackRate;
+
+      // Start while still handling the user's click. Waiting for metadata first
+      // loses the user-activation window in Safari and other strict browsers.
+      if (autoplay) {
+        void audio.play().catch(() => {
+          setPlaying(false);
+          setError(t('player.error.playbackBlocked'));
+        });
+      }
     },
     [getAudio, index, playbackRate, t],
   );
@@ -173,6 +177,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         try {
           audio.playbackRate = playbackRate;
           await audio.play();
+          navigate('/now-playing');
         } catch {
           setError(t('player.error.playbackBlocked'));
         }
@@ -203,16 +208,18 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         try {
           audio.playbackRate = playbackRate;
           await audio.play();
+          navigate('/now-playing');
         } catch {
           setError(t('player.error.playbackBlocked'));
         }
         return;
       }
 
-      await persist({ force: true });
+      void persist({ force: true });
       loadTrack(resolved.audioEditionId, resolved.trackId, resolved.offsetSeconds, true);
+      navigate('/now-playing');
     },
-    [editionId, getAudio, index, loadTrack, persist, playbackRate, stateFor, t, trackId],
+    [editionId, getAudio, index, loadTrack, navigate, persist, playbackRate, stateFor, t, trackId],
   );
 
   const pause = useCallback(async () => {

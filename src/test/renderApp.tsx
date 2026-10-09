@@ -17,9 +17,17 @@ import type { LanguageCode } from '../domain/language';
  * hand-built context value would prove nothing about the wiring.
  */
 
-function withProviders(children: React.ReactNode, locale: LanguageCode) {
+export interface RenderAppOptions {
+  includeStaticSources?: boolean;
+}
+
+function withProviders(
+  children: React.ReactNode,
+  locale: LanguageCode,
+  options: RenderAppOptions = {},
+) {
   return (
-    <CatalogueProvider>
+    <CatalogueProvider includeStaticSources={options.includeStaticSources ?? false}>
       <UserDataProvider>
         <I18nProvider locale={locale}>
           <PlayerProvider>{children}</PlayerProvider>
@@ -30,9 +38,15 @@ function withProviders(children: React.ReactNode, locale: LanguageCode) {
 }
 
 /** Renders the full application at a path, in the Russian UI. */
-export function renderApp(path = '/', locale: LanguageCode = 'ru'): RenderResult {
+export function renderApp(
+  path = '/',
+  locale: LanguageCode = 'ru',
+  options: RenderAppOptions = {},
+): RenderResult {
   return render(
-    <MemoryRouter initialEntries={[path]}>{withProviders(<AppRoutes />, locale)}</MemoryRouter>,
+    <MemoryRouter initialEntries={[path]}>
+      {withProviders(<AppRoutes />, locale, options)}
+    </MemoryRouter>,
   );
 }
 
@@ -41,6 +55,7 @@ export function renderRoute(
   path: string,
   route: RouteObject,
   locale: LanguageCode = 'ru',
+  options: RenderAppOptions = {},
 ): RenderResult {
   return render(
     <MemoryRouter initialEntries={[path]}>
@@ -49,6 +64,7 @@ export function renderRoute(
           <Route path={route.path ?? '/'} element={route.element} />
         </Routes>,
         locale,
+        options,
       )}
     </MemoryRouter>,
   );

@@ -4,6 +4,7 @@ import type { Catalogue } from '../domain/types';
 import { DevCatalogueAdapter, devCatalogue } from '../data/devCatalogue';
 import { AdapterRegistry } from '../sources/adapter';
 import { LibriVoxAdapter } from '../sources/librivox/LibriVoxAdapter';
+import { MDSAdapter } from '../sources/mds/MDSAdapter';
 import { CatalogueContext, type CatalogueContextValue } from './catalogueContext';
 import type { ProviderLoadState } from './providerLoadState';
 
@@ -25,9 +26,21 @@ const LIBRIVOX_PAGE_SIZE = 50;
  * themselves here alongside the bundled development adapter. The provider is
  * intentionally unaware of any specific provider beyond wiring it up.
  */
-export function CatalogueProvider({ children }: { children: ReactNode }) {  const registry = useMemo(() => createRegistry(), []);
+export function CatalogueProvider({
+  children,
+  includeStaticSources = true,
+}: {
+  children: ReactNode;
+  /** Tests that exercise legacy fixtures may opt out; production always uses the default. */
+  includeStaticSources?: boolean;
+}) {
+  const registry = useMemo(() => createRegistry(includeStaticSources), [includeStaticSources]);
   const adapters = useMemo(() => registry.enabled(), [registry]);
-  const [catalogue, setCatalogue] = useState<Catalogue>(() => devCatalogue);
+  const mdsCatalogue = useMemo(
+    () => (registry.get('mds') as MDSAdapter | undefined)?.catalogue,
+    [registry],
+  );
+  const [catalogue, setCatalogue] = useState<Catalogue>(() => mdsCatalogue ?? devCatalogue);
   const [providerState, setProviderState] = useState<ProviderLoadState>({
     status: 'idle',
     sourceId: undefined,
@@ -46,8 +59,8 @@ export function CatalogueProvider({ children }: { children: ReactNode }) {  cons
       try {
         const fetched = await libriVox.loadCatalogue({ refresh });
         const scan = libriVox.getScanState();
-        const combined = mergeCatalogues([devCatalogue, fetched]);
-        setCatalogue(shouldShowDevCatalogue(combined) ? devCatalogue : fetched);
+        const combined = mergeCatalogues([...(mdsCatalogue ? [mdsCatalogue] : []), fetched]);
+        setCatalogue(shouldShowDevCatalogue(combined) ? devCatalogue : combined);
         setProviderState({
           status: 'ready',
           sourceId: 'librivox',
@@ -69,7 +82,7 @@ export function CatalogueProvider({ children }: { children: ReactNode }) {  cons
         });
       }
     },
-    [registry],
+    [mdsCatalogue, registry],
   );
 
   useEffect(() => {
@@ -126,9 +139,10 @@ function shouldShowDevCatalogue(catalogue: Catalogue): boolean {
  * Real adapters (LibriVox, Internet Archive, MDS, RSS feeds, ...) get added
  * here. Nothing else in the application needs to know they exist.
  */
-function createRegistry(): AdapterRegistry {
+function createRegistry(includeStaticSources: boolean): AdapterRegistry {
   const registry = new AdapterRegistry();
   registry.register(new DevCatalogueAdapter());
+  if (includeStaticSources) registry.register(new MDSAdapter());
   registry.register(
     new LibriVoxAdapter({ maxPages: LIBRIVOX_INITIAL_PAGES, pageSize: LIBRIVOX_PAGE_SIZE }),
   );

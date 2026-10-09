@@ -17,7 +17,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "check": "npm run lint && npm run typecheck && npm run test && npm run build",
-    "gen:fixtures": "node scripts/generate-fixtures.mjs"
+    "gen:fixtures": "node scripts/generate-fixtures.mjs",
+    "gen:mds-index": "node scripts/generate-mds-index.mjs"
   },
   "dependencies": {
     "react": "^19.2.0",

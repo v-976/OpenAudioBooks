@@ -18,6 +18,7 @@ yarn-error.log*
 pnpm-debug.log*
 logs/
 *.log
+scripts/.cache/
 
 # Secrets — never commit credentials or tokens
 .env

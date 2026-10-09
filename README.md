@@ -21,11 +21,11 @@ audio edition carries its own rights, attribution and licence information.
 | Interface language | Russian (complete). English/Finnish interface translations are **not** finished and are not offered |
 | Preferred audiobook language | Russian, adjustable per device to any of the languages in the catalogue |
 | Client | Progressive Web App, mobile-first for iPhone Safari, works in modern desktop browsers |
-| Real providers | **LibriVox**, integrated and audited. The catalogue is a deliberate **partial** slice of it |
+| Real providers | **LibriVox** and **Модель для сборки (МДС)**, both integrated and audited |
 | Android | Not started. Planned after the web client is stable |
 | Accounts | None, by design |
 
-This milestone adds the first real provider (LibriVox) and a full duration model:
+The current build includes LibriVox, MDS and a full duration model:
 display, filtering by length, and sorting in both directions. The Alpha 0.1.x
 language architecture, local-first persistence and playback resume are unchanged
 and their tests still pass.
@@ -115,13 +115,26 @@ consequential:
   filters locally, which means the Russian subset of a partial catalogue is
   itself partial.
 
+### Модель для сборки / MDS (integrated)
+
+The unofficial archive `mds-old.ru`, which the official `mds.ru` site links to,
+publishes Russian-language recording pages and direct browser-playable MP3
+streams. Its metadata endpoints do not allow cross-origin browser reads, so a
+manual, rate-limited generator builds a metadata-only search index from public
+work URLs in the archive sitemap.
+
+The index records its source and refresh date. It contains no audio and no
+temporary signed MP3 links. Playback sends the stable source URL
+`https://mds-old.ru/api/play/{workId}` to the shared player; the archive performs
+its own temporary redirect. Rights are shown as unknown because free listening
+does not establish a licence or public-domain status.
+
 ### Planned
 
 Not integrated. Each will be added as a source adapter behind one interface,
 without changing the UI:
 
 - Internet Archive
-- MDS / «Модель для сборки»
 - other legitimate free audiobook archives
 - legitimate podcast/RSS sources
 - author- or publisher-provided free audio
@@ -216,6 +229,7 @@ npm run build        # production build into dist/
 npm run preview      # serve the production build on :4173
 npm run check        # lint + typecheck + test + build
 npm run gen:fixtures # regenerate the development tone/icon assets
+npm run gen:mds-index # manually refresh the public MDS metadata-only index
 ```
 
 The application is entirely static. There is no backend to run. `npm run preview`
@@ -224,7 +238,7 @@ behaviour; `npm run dev` skips service-worker registration by design.
 
 ### Tests
 
-298 tests covering the domain model and narrator faceting, language
+308 tests covering the domain model and narrator faceting, language
 normalisation and filtering, duration normalisation, filtering and sorting in both
 directions, LibriVox payload mapping (including the audit's data defects),
 transport error handling, pagination de-duplication, the provider cache,

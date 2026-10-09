@@ -337,8 +337,9 @@ export function SearchPage() {
           // unless the whole provider catalogue is loaded, which it never is.
           // Development fixtures are likewise not a complete catalogue.
           partial={providerState.partial || isDevelopmentData || providerState.status !== 'ready'}
-          loadedCount={providerState.status === 'ready' ? providerState.loadedCount : undefined}
-          sourceName={index.sourcesById.get('librivox')?.name}
+          loadedCount={
+            providerState.status === 'ready' ? index.catalogue.audioEditions.length : undefined
+          }
         />
       </div>
 

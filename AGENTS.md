@@ -138,9 +138,14 @@ conflated, derived from one another, or reused for one another:
     explicitly permits redistribution *and* the project owner explicitly approves
     it. Reference remote URLs instead. Caching, mirroring and downloading into the
     repository are all prohibited.
-26. **Never add real audiobook metadata, cover images or audio files** to the
-    repository. Development data is fictional, `dev:`-prefixed, and on the
-    reserved `example.invalid` domain.
+26. **Never add cover images or audio files from third-party sources** to the
+    repository. Public metadata (title, author, provider id, language, source
+    page URL and technical recording facts) may be indexed and bundled as a
+    local search representation of an external source. Such an index is not an
+    independently hosted audiobook catalogue: it contains no audio, keeps its
+    source and refresh date, and never stores expiring or signed media URLs.
+    Development fixtures remain fictional, `dev:`-prefixed, and on the reserved
+    `example.invalid` domain.
 27. Never assert rights status the source does not state.
 
 ## 6. Architecture boundaries
@@ -246,8 +251,13 @@ conflated, derived from one another, or reused for one another:
     CORS restriction without explicit project-owner approval.
 50. **Never download, cache, mirror or re-publish provider audio.** Only remote
     URLs are referenced; playback streams from the host the provider uses.
-51. **Never mirror a provider catalogue.** Cache a bounded slice, refresh it
-    explicitly, and cap it. A mirror is a different project.
+51. **Never mirror provider audio or republish a provider catalogue as an
+    independent service.** A task may explicitly authorise a static,
+    metadata-only search index generated from public pages. It must identify its
+    source and refresh date, use a respectful bounded/manual generator, contain
+    no media files or temporary signed media URLs, and remain only a local view
+    of records that link back to the source. Runtime provider caches remain
+    bounded and explicitly refreshed.
 52. **Audit a provider before integrating it, and record the audit.** Verify the
     endpoint, response format, pagination, rate limits, field shapes and rights
     from the live API. Never assume a field exists because the documentation
