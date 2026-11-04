@@ -1,6 +1,6 @@
 # OpenAudioBooks
 
-**Alpha 0.2.0 — development build. Not production-ready.**
+**Alpha 0.2.1 — development build. Not production-ready.**
 
 OpenAudioBooks is a free, public, **non-commercial** application for discovering,
 cataloguing and listening to audiobooks that are legally available to listen to
@@ -17,7 +17,7 @@ audio edition carries its own rights, attribution and licence information.
 
 | | |
 | --- | --- |
-| Version | 0.2.0 (Alpha) |
+| Version | 0.2.1 (Alpha) |
 | Interface language | Russian (complete). English/Finnish interface translations are **not** finished and are not offered |
 | Preferred audiobook language | Russian, adjustable per device to any of the languages in the catalogue |
 | Client | Progressive Web App, mobile-first for iPhone Safari, works in modern desktop browsers |

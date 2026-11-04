@@ -69,10 +69,35 @@ export function normalizePreferences(raw: unknown): Preferences {
   };
 }
 
+/** Detect browser/system language and map to a supported UI locale. */
+function detectInitialUiLocale(): string {
+  try {
+    const browserLocale = navigator.language || navigator.languages?.[0] || '';
+    const normalized = browserLocale.split(/[-_]/)[0]?.toLowerCase();
+    if (normalized && ['ru', 'en', 'ro'].includes(normalized)) return normalized;
+    return 'en';
+  } catch {
+    return 'en';
+  }
+}
+
 export function loadPreferences(): Preferences {
   try {
     const stored = globalThis.localStorage?.getItem(STORAGE_KEY);
-    if (!stored) return { ...DEFAULT_PREFERENCES };
+    if (!stored) {
+      // First run: detect browser locale and save it so subsequent loads are stable.
+      const initialLocale = detectInitialUiLocale();
+      const defaults: Preferences = {
+        ...DEFAULT_PREFERENCES,
+        uiLocale: initialLocale,
+      };
+      try {
+        globalThis.localStorage?.setItem(STORAGE_KEY, JSON.stringify(defaults));
+      } catch {
+        // Ignore storage failure; defaults still apply.
+      }
+      return defaults;
+    }
     return normalizePreferences(JSON.parse(stored));
   } catch {
     // Private-mode or corrupted values must never break startup.

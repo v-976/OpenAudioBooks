@@ -1,5 +1,6 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react';
 import { APP_VERSION } from '../version';
+import { resolveUiLocale, translate } from '../i18n';
 
 interface State {
   error?: Error;
@@ -9,9 +10,9 @@ interface State {
  * Minimal error boundary. Keeps a rendering failure inside one screen instead
  * of a blank page, and never reports the error anywhere.
  *
- * The fallback screen is intentionally kept in Russian and outside the i18n
- * layer: if the boundary itself fails because of a translation problem, this
- * message must still render.
+ * Reads the locale from localStorage directly rather than using React context,
+ * because this boundary wraps I18nProvider and may render when context is
+ * unavailable.
  */
 export class ErrorBoundary extends Component<{ children: ReactNode }, State> {
   override state: State = {};
@@ -25,23 +26,36 @@ export class ErrorBoundary extends Component<{ children: ReactNode }, State> {
     console.error('OpenAudioBooks render error', error, info);
   }
 
+  private getLocale(): string {
+    try {
+      const stored = localStorage.getItem('openaudiobooks.preferences.v1');
+      if (stored) {
+        const parsed = JSON.parse(stored) as { uiLocale?: string };
+        if (parsed.uiLocale) return resolveUiLocale(parsed.uiLocale);
+      }
+    } catch {
+      // fall through
+    }
+    return 'ru';
+  }
+
   override render(): ReactNode {
     const { error } = this.state;
     if (!error) return this.props.children;
+    const locale = this.getLocale();
     return (
       <div className="page">
-        <h1 className="page__title">Что-то пошло не так</h1>
+        <h1 className="page__title">{translate(locale, 'error.title')}</h1>
         <p className="notice notice--error">{error.message}</p>
         <p className="notice">
-          Ошибка записана только в консоль этого устройства. Данные никуда не отправляются.
-          OpenAudioBooks {APP_VERSION}.
+          {translate(locale, 'error.renderNote')} OpenAudioBooks {APP_VERSION}.
         </p>
         <button
           type="button"
           className="button button--primary"
           onClick={() => this.setState({ error: undefined })}
         >
-          Повторить
+          {translate(locale, 'common.retry')}
         </button>
       </div>
     );

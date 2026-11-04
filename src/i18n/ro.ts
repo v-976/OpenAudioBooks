@@ -1,5 +1,4 @@
 import type { CompleteLocaleBundle } from './keys';
-import { ru } from './keys';
 
 /**
  * Romanian — the complete translation for this milestone.

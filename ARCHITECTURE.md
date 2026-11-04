@@ -241,7 +241,7 @@ narrator names **and aliases**, source name, publisher and track titles.
 Two mechanisms, chosen by size and need.
 
 **IndexedDB** (`src/persistence/db.ts`) for structured, sizeable local state.
-Database `openaudiobooks`, currently version 1:
+Database `openaudiobooks`, currently version 2:
 
 | Store | Key | Indexes |
 | --- | --- | --- |
@@ -249,6 +249,7 @@ Database `openaudiobooks`, currently version 1:
 | `bookmarks` | `id` | `audioEditionId`, `createdAt` |
 | `history` | `id` | `audioEditionId`, `playedAt` |
 | `meta` | `key` | — |
+| `providerCache` | `[sourceId, recordId]` | `sourceId`, `fetchedAt` |
 
 **localStorage** (`src/persistence/preferencesRepository.ts`) for a handful of
 scalars: playback rate, skip intervals, the last-played pointer, and the two

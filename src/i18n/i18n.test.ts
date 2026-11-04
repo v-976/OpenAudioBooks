@@ -16,10 +16,16 @@ describe('translation fallback', () => {
     expect(translate('en', 'nav.library')).toBe('Library');
   });
 
+  it('resolves a key present in the requested locale', () => {
+    // Alpha 0.2.1: English and Romanian are complete; no fallback needed for them.
+    expect(translate('en', 'about.privacy')).toBe('Privacy');
+    expect(translate('ro', 'about.privacy')).toBe('Confidențialitate');
+  });
+
   it('falls back to the complete locale when a key is missing', () => {
-    // English has no translation for this key; Russian must supply it rather
-    // than rendering an empty string or a raw key.
-    expect(translate('en', 'about.privacy')).toBe(ru['about.privacy']);
+    // A hypothetical incomplete locale must fall back to Russian rather than
+    // rendering an empty string or a raw key.
+    expect(translate('zz', 'about.privacy')).toBe(ru['about.privacy']);
   });
 
   it('falls back for an unknown locale', () => {
@@ -31,9 +37,10 @@ describe('translation fallback', () => {
     expect(translate('ru', 'does.not.exist' as 'nav.library')).toBe('does.not.exist');
   });
 
-  it('Russian is complete and English is honestly reported as incomplete', () => {
+  it('Russian, English and Romanian are all complete; unknown locales are not', () => {
     expect(isLocaleComplete('ru')).toBe(true);
-    expect(isLocaleComplete('en')).toBe(false);
+    expect(isLocaleComplete('en')).toBe(true);
+    expect(isLocaleComplete('ro')).toBe(true);
     expect(isLocaleComplete('zz')).toBe(false);
   });
 

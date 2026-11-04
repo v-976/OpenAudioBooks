@@ -18,6 +18,9 @@ beforeEach(() => {
   resetDatabaseHandle();
   globalThis.indexedDB = new IDBFactory();
   localStorage.clear();
+  // Alpha 0.2.1: default locale is now English (first-launch detection).
+  // These tests verify Russian UI text, so explicitly set ru before each test.
+  savePreferences(normalizePreferences({ uiLocale: 'ru', preferredAudioLanguages: ['ru'] }));
 });
 
 const index = buildIndex(devCatalogue);
@@ -218,17 +221,20 @@ describe('settings screen', () => {
     expect(screen.queryByRole('button', { name: /English/ })).toBeNull();
   });
 
-  it('says honestly that only the Russian interface translation is complete', () => {
+  it('shows that interface translations are complete for ru/en/ro', () => {
     renderRoute('/settings', { path: '/settings', element: <SettingsPage /> });
-    expect(screen.getByText(/Пока полностью переведён только русский интерфейс/)).toBeTruthy();
+    // Alpha 0.2.1: all three UI locales are complete; the old "only Russian" notice is gone.
+    expect(screen.queryByText(/Пока полностью переведён только русский интерфейс/)).toBeNull();
+    expect(screen.getAllByText(/Язык интерфейса и языки аудиокниг/).length).toBeGreaterThan(0);
   });
 
   it('changing audiobook languages does not change the UI language', async () => {
     renderRoute('/settings', { path: '/settings', element: <SettingsPage /> });
 
+    // Select the audiobook language button (not the UI locale button).
     const english = screen
-      .getByRole('button', { name: /Английский/ })
-      .closest('button') as HTMLButtonElement;
+      .getAllByRole('button', { name: /Английский/ })
+      .find((btn) => btn.classList.contains('language-option')) as HTMLButtonElement;
     english.click();
 
     // Allow the async local write to settle.
@@ -245,7 +251,9 @@ describe('settings screen', () => {
     renderRoute('/settings', { path: '/settings', element: <SettingsPage /> });
 
     for (const name of ['Английский', 'Финский']) {
-      const button = screen.getByRole('button', { name: new RegExp(name) });
+      const button = screen
+        .getAllByRole('button', { name: new RegExp(name) })
+        .find((btn) => btn.classList.contains('language-option')) as HTMLButtonElement;
       button.click();
       // Each toggle is an async local write; wait between them.
       await waitForPrefChange();

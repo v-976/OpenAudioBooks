@@ -113,15 +113,28 @@ const ALIASES: Record<string, LanguageCode> = {
 };
 
 /** English names, mapped through the registry. */
-const ENGLISH_NAME_ALIASES: Record<string, LanguageCode> = Object.fromEntries(
-  LANGUAGES.map((language) => [language.englishName.toLowerCase(), language.code]),
-  [['romanian', 'ro']],
-);
+const ENGLISH_NAME_ALIASES: Record<string, LanguageCode> = {
+  ...Object.fromEntries(LANGUAGES.map((language) => [language.englishName.toLowerCase(), language.code])),
+  romanian: 'ro',
+};
 
 /** Names in the locales the UI itself is translated into. */
 const LOCALISED_NAME_ALIASES: Record<string, LanguageCode> = {
   русский: 'ru',
   английский: 'en',
+  финский: 'fi',
+  немецкий: 'de',
+  французский: 'fr',
+  испанский: 'es',
+  итальянский: 'it',
+  норвежский: 'no',
+  шведский: 'sv',
+  украинский: 'uk',
+  польский: 'pl',
+  чешский: 'cs',
+  португальский: 'pt',
+  китайский: 'zh',
+  японский: 'ja',
   engleză: 'en',
   română: 'ro',
   romanian: 'ro',

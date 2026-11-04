@@ -98,9 +98,12 @@ describe('language registry', () => {
 
 describe('UI locales are a separate concept from catalogue languages', () => {
   it('offers only complete UI translations', () => {
-    expect(TRANSLATED_UI_LOCALES.map((locale) => locale.code)).toContain(FALLBACK_UI_LOCALE);
-    // English audio exists in the catalogue but the English UI is not complete,
-    // so it must not be offered as a UI locale yet.
-    expect(TRANSLATED_UI_LOCALES.map((locale) => locale.code)).not.toContain('en');
+    const codes = TRANSLATED_UI_LOCALES.map((locale) => locale.code);
+    expect(codes).toContain(FALLBACK_UI_LOCALE);
+    // Alpha 0.2.1: English and Romanian are now complete UI locales.
+    expect(codes).toContain('en');
+    expect(codes).toContain('ro');
+    // Finnish audio exists but Finnish UI is not complete.
+    expect(codes).not.toContain('fi');
   });
 });

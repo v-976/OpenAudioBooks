@@ -97,7 +97,7 @@ export function SettingsPage() {
           })}
         </ul>
 
-        <p className="notice notice--info">{t('settings.languageOnlyRussian')}</p>
+        <p className="notice notice--info">{t('settings.languageIndependentNote')}</p>
         <p className="section__footnote">
           {t('settings.currentLocale', {
             name: languageName(locale),

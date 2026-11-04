@@ -73,6 +73,7 @@ function interpolate(template: string, params?: TranslateParams): string {
 }
 
 function selectValue(value: TranslationValue, count?: number): string {
+  if (typeof value === 'string') return value;
   if (count === undefined) return value.other ?? value.one ?? value.many ?? value.few ?? '';
   const category = (PLURAL_RULES[FALLBACK_UI_LOCALE] ?? russianPlural)(count);
   return value[category] ?? value.other ?? value.one ?? value.many ?? value.few ?? '';
