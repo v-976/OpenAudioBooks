@@ -13,7 +13,7 @@
  *  - collect, store or transmit any usage, telemetry or analytics data.
  */
 
-const CACHE_VERSION = 'openaudiobooks-shell-v1';
+const CACHE_VERSION = 'openaudiobooks-shell-v2';
 const SHELL_URLS = ['/', '/index.html', '/manifest.webmanifest', '/icons/icon-192.png', '/icons/icon-512.png'];
 
 self.addEventListener('install', (event) => {
@@ -38,10 +38,22 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('message', (event) => {
-  // Only supported control message: skip waiting for an update.
+  // Supported control messages.
   if (event.data === 'SKIP_WAITING') {
     void self.skipWaiting();
   }
+  if (event.data?.type === 'GET_VERSION') {
+    event.ports?.[0]?.postMessage({ version: CACHE_VERSION });
+  }
+});
+
+// Notify all clients when a new version is ready to activate.
+self.addEventListener('install', () => {
+  self.addEventListener('activate', () => {
+    self.clients.matchAll().then((clients) => {
+      clients.forEach((client) => client.postMessage({ type: 'SW_UPDATED', version: CACHE_VERSION }));
+    });
+  });
 });
 
 self.addEventListener('fetch', (event) => {

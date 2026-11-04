@@ -1,16 +1,18 @@
 {
   "name": "OpenAudioBooks",
   "short_name": "OpenAudioBooks",
-  "description": "Бесплатное, публичное, некоммерческое приложение-каталог и плеер аудиокниг, которые законно можно слушать бесплатно с внешних источников.",
+  "description": "Free, public, non-commercial audiobook catalogue and player for books legally listenable from external sources.",
   "id": "/",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
+  "orientation": "any",
   "background_color": "#181a2b",
   "theme_color": "#181a2b",
-  "lang": "ru",
+  "lang": "en",
   "dir": "ltr",
   "categories": ["books", "music", "education"],
+  "prefer_related_applications": false,
   "icons": [
     {
       "src": "/icons/icon-192.png",

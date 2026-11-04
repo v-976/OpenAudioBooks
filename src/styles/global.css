@@ -79,11 +79,14 @@ a {
 }
 
 .app-shell {
+  min-height: 100vh;
   min-height: 100dvh;
   display: flex;
   flex-direction: column;
   padding-left: var(--safe-left);
   padding-right: var(--safe-right);
+  /* Prevent horizontal overflow from any child */
+  overflow-x: hidden;
 }
 
 .app-header {
@@ -132,6 +135,10 @@ a {
   padding: 1rem;
   /* Leave room for the mini player and the fixed bottom navigation. */
   padding-bottom: calc(var(--safe-bottom) + 8.5rem);
+  /* Ensure content never overflows horizontally */
+  overflow-x: hidden;
+  /* Prevent text from overflowing containers */
+  min-width: 0;
 }
 
 .app-nav {
@@ -946,5 +953,165 @@ a {
   * {
     animation: none !important;
     transition: none !important;
+  }
+}
+
+/*
+ * Landscape orientation on phones and tablets.
+ *
+ * In landscape, vertical space is limited. The header shrinks, content gets
+ * more horizontal room, and the mini-player/nav stay compact. No JavaScript
+ * orientation state — pure CSS media queries.
+ */
+@media (orientation: landscape) and (max-height: 500px) {
+  .app-header {
+    padding-top: calc(var(--safe-top) + 0.4rem);
+    padding-bottom: 0.3rem;
+  }
+
+  .app-header__status {
+    display: none;
+  }
+
+  .app-main {
+    padding-top: 0.5rem;
+    /* In landscape with mini-player visible, reduce bottom padding slightly */
+    padding-bottom: calc(var(--safe-bottom) + 7rem);
+  }
+
+  .page__title {
+    font-size: 1.25rem;
+    margin-top: 0.25rem;
+  }
+
+  .hero {
+    padding: 0.75rem;
+  }
+
+  .section {
+    margin-top: 1rem;
+  }
+
+  /* Transport controls stay on one line in landscape */
+  .transport {
+    flex-wrap: nowrap;
+    gap: 0.35rem;
+  }
+
+  .transport .button {
+    padding: 0.4rem 0.6rem;
+  }
+
+  /* Mini-player is more compact in landscape */
+  .mini-player__row {
+    padding: 0.3rem 0.6rem;
+  }
+}
+
+/*
+ * Short viewport heights (landscape phones, split-screen).
+ * Reduce vertical spacing to keep controls visible.
+ */
+@media (max-height: 500px) {
+  .app-nav__link {
+    padding: 0.35rem 0.25rem;
+    font-size: 0.68rem;
+  }
+
+  .mini-player {
+    bottom: calc(var(--safe-bottom) + 3.2rem);
+  }
+
+  .mini-player__row {
+    padding: 0.3rem 0.6rem;
+  }
+
+  .mini-player__title {
+    font-size: 0.8rem;
+  }
+}
+
+/*
+ * Very narrow screens (below 320px). Extremely rare, but must not overflow.
+ */
+@media (max-width: 320px) {
+  .app-main {
+    padding-left: 0.6rem;
+    padding-right: 0.6rem;
+  }
+
+  .transport {
+    gap: 0.25rem;
+  }
+
+  .transport .button {
+    padding: 0.4rem 0.5rem;
+    font-size: 0.85rem;
+  }
+
+  .app-nav__label {
+    font-size: 0.65rem;
+  }
+}
+
+/*
+ * Wider screens: center content, give more breathing room.
+ */
+@media (min-width: 640px) {
+  .app-main {
+    padding-left: 1.5rem;
+    padding-right: 1.5rem;
+  }
+}
+
+/*
+ * Ensure fixed elements respect safe areas on notched devices in landscape.
+ * The left/right safe-area insets are already applied to .app-shell, but
+ * fixed-position children (nav, mini-player) need them too.
+ */
+.app-nav,
+.mini-player {
+  padding-left: var(--safe-left);
+  padding-right: var(--safe-right);
+}
+
+/*
+ * Prevent iOS Safari from zooming on input focus (font-size >= 16px).
+ * Already set on body, but inputs need it explicitly on some versions.
+ */
+input,
+select,
+textarea {
+  font-size: 16px;
+}
+
+/* Ensure buttons and links have adequate touch targets on all screens */
+button,
+a,
+[role='button'] {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Smooth scrolling for the whole app, but respect reduced-motion */
+@media (prefers-reduced-motion: no-preference) {
+  html {
+    scroll-behavior: smooth;
+  }
+}
+
+/*
+ * High contrast mode support.
+ */
+@media (prefers-contrast: high) {
+  :root {
+    --border: #5a5e74;
+    --text-muted: #c0c4d8;
+  }
+
+  .badge,
+  .notice,
+  .card,
+  .button {
+    border-width: 2px;
   }
 }

@@ -428,21 +428,42 @@ fixtures. This must be removed or made a build flag before any release.
 
 ## 9. PWA implementation
 
-- `public/manifest.webmanifest` — standalone display, start URL `/`, theme and
-  background colours, `any` and `maskable` icons.
+- `public/manifest.webmanifest` — standalone display, start URL `/`, `orientation: any`,
+  theme and background colours, `any` and `maskable` icons.
 - `public/icons/` — generated placeholders at 192, 512 and 180 (apple-touch-icon).
 - `public/sw.js` — precaches the shell; cache-first same-origin assets;
   navigations network-first with a cached shell fallback; **every cross-origin
-  request passes straight through to the network**.
+  request passes straight through to the network**. Cache version bumped on
+  each release; sends `SW_UPDATED` message to clients when a new version activates.
 - `index.html` — `viewport-fit=cover`, `theme-color`, `color-scheme`, and iOS
   metadata (`apple-mobile-web-app-capable`, `apple-mobile-web-app-title`,
   `apple-mobile-web-app-status-bar-style`, `apple-touch-icon`).
 - `src/styles/global.css` — `env(safe-area-inset-*)` insets for notched
-  devices; `100dvh` for correct mobile viewport height.
-- `src/pwa.ts` — registers the worker in production builds only.
+  devices; `100dvh` for correct mobile viewport height (with `100vh` fallback);
+  landscape media queries; `overflow-x: hidden` to prevent horizontal scroll;
+  `-webkit-text-size-adjust: 100%` to prevent iOS rotation text scaling;
+  44px minimum touch targets; high-contrast and reduced-motion support.
+- `src/pwa.ts` — registers the worker in production builds only; exposes
+  `onServiceWorkerUpdate()` for UI update notifications; periodic update checks
+  when the page is visible.
 
 The service worker never caches or proxies third-party audio. Known iOS
 limitations are documented in the README.
+
+### Media Session API
+
+`PlayerProvider` integrates the standard Media Session API where supported:
+
+- **Metadata**: title (track), artist (narrators), album (work title).
+- **Action handlers**: `play`, `pause`, `seekbackward`, `seekforward`, `seekto`,
+  `previoustrack`, `nexttrack`.
+- **Position state**: `setPositionState()` for lock-screen seek bar.
+- **Graceful degradation**: absence of Media Session API does not break the
+  player; handlers are cleaned up on unmount.
+
+Lock-screen and notification controls work on Android Chrome and desktop
+browsers. iOS Safari support is partial (metadata and basic controls only).
+Physical device verification is **NOT VERIFIED** until confirmed by the user.
 
 ## 10. Future Android considerations
 

@@ -466,6 +466,62 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     });
   }, [edition, index, track]);
 
+  // Media Session action handlers: play, pause, seek backward/forward, seek to.
+  // These enable lock-screen and notification controls on supported browsers.
+  // Absence of Media Session API must not break the player — hence the guard.
+  useEffect(() => {
+    if (typeof navigator === 'undefined' || !('mediaSession' in navigator)) return;
+
+    const ms = navigator.mediaSession;
+    const handlers: Array<[MediaSessionAction, MediaSessionActionHandler]> = [
+      ['play', () => void resume()],
+      ['pause', () => void pause()],
+      ['seekbackward', () => skipBackward()],
+      ['seekforward', () => skipForward()],
+      ['seekto', (details) => {
+        if (details.seekTime !== undefined) seekTo(details.seekTime);
+      }],
+      ['previoustrack', () => void previousTrack()],
+      ['nexttrack', () => void nextTrack()],
+    ];
+
+    for (const [action, handler] of handlers) {
+      try {
+        ms.setActionHandler(action, handler);
+      } catch {
+        // Action not supported in this browser; ignore.
+      }
+    }
+
+    // Clear handlers on unmount to avoid stale references.
+    return () => {
+      for (const [action] of handlers) {
+        try {
+          ms.setActionHandler(action, null);
+        } catch {
+          // Ignore.
+        }
+      }
+    };
+  }, [pause, resume, seekTo, skipBackward, skipForward, previousTrack, nextTrack]);
+
+  // Update Media Session position state (for seek bar on lock screen).
+  useEffect(() => {
+    if (typeof navigator === 'undefined' || !('mediaSession' in navigator)) return;
+    if (!('setPositionState' in navigator.mediaSession)) return;
+    if (!track) return;
+
+    try {
+      navigator.mediaSession.setPositionState({
+        duration: durationSeconds || undefined,
+        position: positionSeconds,
+        playbackRate: playbackRate || undefined,
+      });
+    } catch {
+      // Position state not supported or invalid values; ignore.
+    }
+  }, [durationSeconds, positionSeconds, playbackRate, track]);
+
   // Adopt playback rate changes made elsewhere (e.g. restored preferences).
   // The media element is an external system, so syncing it in an effect is the
   // intended use of this hook.
