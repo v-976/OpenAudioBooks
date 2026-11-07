@@ -249,6 +249,7 @@ export const roBundle: CompleteLocaleBundle = {
     'Salvat pe acest dispozitiv: {time} capitolul „{track}”.',
   'player.trackOfEdition': 'Capitolul {track} din „{title}”',
   'player.error.noAudio': 'Pentru această audiobibliu nu există fișiere audio disponibile.',
+  'player.error.offline': 'Conținutul audio nu este disponibil fără conexiune la internet.',
   'player.error.playbackBlocked':
     'Browserul nu a permis începutul redării. Apasă „Ascultă” din nou.',
   'player.error.audioUnavailable':

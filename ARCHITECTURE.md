@@ -341,6 +341,17 @@ The media element itself is never persisted. Only the
 
 ### Completion and resume semantics
 
+Alpha 0.3.1 hydrates the last-played edition from local user state once user data
+and catalogue tracks are available, without autoplay. The requested track offset
+remains authoritative for display and persistence until `loadedmetadata` permits
+the resume seek. Before then, known track duration comes from catalogue metadata
+(or the edition total for a single-track edition). Uninitialized media times,
+`emptied`, and media errors do not clear that local position. Once initialized,
+media updates and explicit seeks resume normal synchronization and persistence.
+Offline play attempts use a localized connection error; online `NotAllowedError`
+uses the browser-rejection message, while other failures use the source error.
+There is no stored schema change or migration, and no audio caching.
+
 `play(editionId)` with no explicit track or offset resolves against the position
 stored for that edition, so a bare "Play" or "Resume" from any screen lands on
 the right chapter at the right second. An explicit `trackId` always wins, which

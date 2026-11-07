@@ -61,6 +61,8 @@ describe('MDS playback through the shared player', () => {
     expect(playerAudio().paused).toBe(false);
 
     Object.defineProperty(playerAudio(), 'duration', { configurable: true, value: 600 });
+    // Media time becomes authoritative only after metadata and resume seek.
+    fireEvent.loadedMetadata(playerAudio());
     playerAudio().currentTime = 73;
     fireEvent.timeUpdate(playerAudio());
     await act(async () => {

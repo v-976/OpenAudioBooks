@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { CatalogueProvider } from '../app/CatalogueProvider';
 import { UserDataProvider } from '../app/UserDataProvider';
@@ -8,6 +8,8 @@ import { PlayerProvider } from './PlayerProvider';
 import { NowPlayingPage } from '../pages/NowPlayingPage';
 import { resetDatabaseHandle } from '../persistence/db';
 import { IDBFactory } from 'fake-indexeddb';
+import { renderApp, waitForUserData } from '../test/renderApp';
+import { getAllUserState } from '../persistence/userStateRepository';
 
 /**
  * Media Session API tests.
@@ -70,6 +72,36 @@ beforeEach(() => {
 });
 
 describe('Media Session API integration', () => {
+  it('keeps playback, seek, pause persistence and navigation wired after media initialization', async () => {
+    renderApp('/editions/dev%3Aedition%3Amysterious-lighthouse%3Aru');
+    await waitForUserData();
+    await act(async () => screen.getByRole('button', { name: /Слушать с начала/ }).click());
+    const audio = screen.getByTestId('player-audio') as HTMLAudioElement;
+    await act(async () => {
+      Object.defineProperty(audio, 'duration', { configurable: true, value: 8 });
+      fireEvent.loadedMetadata(audio);
+    });
+    const action = (name: string): MediaSessionActionHandler => {
+      const call = [...mockSetActionHandler.mock.calls].reverse().find((entry) => entry[0] === name && entry[1]);
+      if (!call) throw new Error(`Missing Media Session handler: ${name}`);
+      return call[1] as MediaSessionActionHandler;
+    };
+    await act(async () => action('seekto')({ action: 'seekto', seekTime: 3 }));
+    expect(audio.currentTime).toBe(3);
+    await act(async () => action('pause')({ action: 'pause' }));
+    expect(audio.paused).toBe(true);
+    await waitFor(async () => expect((await getAllUserState())[0].positionSeconds).toBe(3));
+    await act(async () => action('play')({ action: 'play' }));
+    expect(audio.paused).toBe(false);
+    expect(mockSetPositionState).toHaveBeenCalledWith({ duration: 8, position: 3, playbackRate: 1 });
+    await act(async () => screen.getByRole('link', { name: 'Моя полка' }).click());
+    expect(screen.getByTestId('player-audio')).toBe(audio);
+    expect(audio.paused).toBe(false);
+    await act(async () => within(document.querySelector('.mini-player') as HTMLElement)
+      .getByRole('link').click());
+    expect(document.querySelector('.progress__times')?.textContent).toContain('0:03');
+  });
+
   it('registers action handlers when Media Session is available', async () => {
     render(
       <MemoryRouter initialEntries={['/now-playing']}>

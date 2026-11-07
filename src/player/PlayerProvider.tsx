@@ -9,7 +9,7 @@ import {
 import { useNavigate } from 'react-router-dom';
 import { useCatalogue } from '../app/catalogueContext';
 import { useUserData } from '../app/userData';
-import { savePlaybackPosition } from '../persistence/userStateRepository';
+import { getUserState, savePlaybackPosition } from '../persistence/userStateRepository';
 import {
   clampPosition,
   computeSkip,
@@ -40,7 +40,7 @@ const PROGRESS_SAVE_INTERVAL_MS = 4000;
  */
 export function PlayerProvider({ children }: { children: ReactNode }) {
   const { index } = useCatalogue();
-  const { preferences, stateFor, now, updatePreferences } = useUserData();
+  const { ready: userDataReady, preferences, stateFor, now, updatePreferences } = useUserData();
   const { t } = useI18n();
   const navigate = useNavigate();
 
@@ -60,6 +60,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   /** Guards against persisting a position for a track we already left. */
   const pendingRef = useRef<{ trackId: string; positionSeconds: number } | undefined>(undefined);
+  // Media time is not authoritative until the requested offset has been applied.
+  const mediaInitialized = useRef(false);
   const lastSaveRef = useRef(0);
 
   const edition = editionId ? index.editionsById.get(editionId) : undefined;
@@ -78,7 +80,11 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     async (options?: { force?: boolean }) => {
       const audio = audioRef.current;
       if (!audio || !editionId || !trackId) return;
-      const position = clampPosition(audio.currentTime, audio.duration || undefined);
+      if (pendingRef.current?.trackId !== trackId) return;
+      const position = mediaInitialized.current && Number.isFinite(audio.currentTime)
+        && Number.isFinite(audio.duration) && audio.duration > 0
+        ? clampPosition(audio.currentTime, audio.duration || undefined)
+        : pendingRef.current.positionSeconds;
       const nowMs = Date.now();
       if (!options?.force && nowMs - lastSaveRef.current < PROGRESS_SAVE_INTERVAL_MS) return;
       lastSaveRef.current = nowMs;
@@ -94,7 +100,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
             tracks,
             { trackId, offsetSeconds: position },
             position,
-            Number.isFinite(audio.duration) ? audio.duration : undefined,
+            mediaInitialized.current && Number.isFinite(audio.duration) ? audio.duration : undefined,
           ),
         });
         await updatePreferences({ lastAudioEditionId: editionId });
@@ -105,6 +111,13 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     },
     [editionId, trackId, now, tracks, updatePreferences],
   );
+
+  const playbackError = useCallback((reason?: unknown) => {
+    if (navigator.onLine === false) return t('player.error.offline');
+    return reason instanceof DOMException && reason.name === 'NotAllowedError'
+      ? t('player.error.playbackBlocked')
+      : t('player.error.audioUnavailable');
+  }, [t]);
 
   const loadTrack = useCallback(
     (nextEditionId: string, nextTrackId: string, startAtSeconds: number, autoplay: boolean) => {
@@ -120,18 +133,14 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       setTrackId(nextTrackId);
       setError(undefined);
       setReady(false);
+      setPlaying(false);
+      mediaInitialized.current = false;
       setPositionSeconds(Math.max(0, startAtSeconds));
+      setDurationSeconds(nextTrack.durationSeconds ?? (nextTracks.length === 1
+        ? index.editionsById.get(nextEditionId)?.durationSeconds ?? 0 : 0));
       pendingRef.current = { trackId: nextTrackId, positionSeconds: startAtSeconds };
-      const applyStart = () => {
-        try {
-          audio.currentTime = Math.max(0, startAtSeconds);
-        } catch {
-          // Some browsers reject seeking before metadata; metadata event retries.
-        }
-        audio.playbackRate = playbackRate;
-      };
 
-      audio.addEventListener('loadedmetadata', applyStart, { once: true });
+      audio.dataset.trackId = nextTrackId;
       audio.src = nextTrack.audioUrl;
       audio.load();
       audio.playbackRate = playbackRate;
@@ -139,14 +148,37 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       // Start while still handling the user's click. Waiting for metadata first
       // loses the user-activation window in Safari and other strict browsers.
       if (autoplay) {
-        void audio.play().catch(() => {
+        if (navigator.onLine === false) {
+          setError(playbackError());
+          return;
+        }
+        void audio.play().catch((reason: unknown) => {
           setPlaying(false);
-          setError(t('player.error.playbackBlocked'));
+          setError(playbackError(reason));
         });
       }
     },
-    [getAudio, index, playbackRate, t],
+    [getAudio, index, playbackRate, playbackError, t],
   );
+
+  // Restore the last session from local data, without autoplay or waiting for media.
+  useEffect(() => {
+    if (!userDataReady || editionId || !preferences.lastAudioEditionId) return;
+    const lastId = preferences.lastAudioEditionId;
+    const lastTracks = index.tracksByEditionId.get(lastId) ?? [];
+    if (lastTracks.length === 0) return;
+    let cancelled = false;
+    // Read the durable snapshot asynchronously; a user action always wins over
+    // late hydration, including when the catalogue becomes available later.
+    void getUserState(lastId).then((stored) => {
+      if (cancelled || pendingRef.current || !stored) return;
+      const target = resolveResumeTarget(lastTracks, stored);
+      if (target) loadTrack(lastId, target.trackId, target.offsetSeconds, false);
+    }).catch((storageError: unknown) => {
+      console.warn('Playback progress could not be restored locally.', storageError);
+    });
+    return () => { cancelled = true; };
+  }, [userDataReady, editionId, preferences.lastAudioEditionId, index, loadTrack]);
 
   /**
    * Loads an edition and starts playing.
@@ -175,11 +207,15 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       if (sameEdition && !targetTrackId && startAtSeconds === undefined) {
         // Already loaded and no destination requested: continue where we are.
         try {
+          if (navigator.onLine === false) {
+            setError(playbackError());
+            return;
+          }
           audio.playbackRate = playbackRate;
           await audio.play();
           navigate('/now-playing');
-        } catch {
-          setError(t('player.error.playbackBlocked'));
+        } catch (reason) {
+          setError(playbackError(reason));
         }
         return;
       }
@@ -206,11 +242,15 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         Math.abs(resolved.offsetSeconds - audio.currentTime) < 0.5
       ) {
         try {
+          if (navigator.onLine === false) {
+            setError(playbackError());
+            return;
+          }
           audio.playbackRate = playbackRate;
           await audio.play();
           navigate('/now-playing');
-        } catch {
-          setError(t('player.error.playbackBlocked'));
+        } catch (reason) {
+          setError(playbackError(reason));
         }
         return;
       }
@@ -219,7 +259,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       loadTrack(resolved.audioEditionId, resolved.trackId, resolved.offsetSeconds, true);
       navigate('/now-playing');
     },
-    [editionId, getAudio, index, loadTrack, navigate, persist, playbackRate, stateFor, t, trackId],
+    [editionId, getAudio, index, loadTrack, navigate, persist, playbackRate, playbackError, stateFor, t, trackId],
   );
 
   const pause = useCallback(async () => {
@@ -233,13 +273,18 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const resume = useCallback(async () => {
     const audio = audioRef.current;
     if (!audio || !track) return;
+    setError(undefined);
+    if (navigator.onLine === false) {
+      setError(playbackError());
+      return;
+    }
     try {
       audio.playbackRate = playbackRate;
       await audio.play();
-    } catch {
-      setError(t('player.error.playbackBlocked'));
+    } catch (reason) {
+      setError(playbackError(reason));
     }
-  }, [playbackRate, t, track]);
+  }, [playbackRate, playbackError, track]);
 
   const toggle = useCallback(async () => {
     const audio = audioRef.current;
@@ -255,19 +300,23 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     (seconds: number) => {
       const audio = audioRef.current;
       if (!audio) return;
-      const next = clampPosition(seconds, Number.isFinite(audio.duration) ? audio.duration : undefined);
-      audio.currentTime = next;
+      const next = clampPosition(seconds, mediaInitialized.current ? audio.duration : durationSeconds || undefined);
+      if (pendingRef.current) pendingRef.current.positionSeconds = next;
+      if (mediaInitialized.current) audio.currentTime = next;
       setPositionSeconds(next);
       void persist({ force: true });
     },
-    [persist],
+    [durationSeconds, persist],
   );
 
   const skipBy = useCallback(
     (deltaSeconds: number) => {
       const audio = audioRef.current;
       if (!audio || !track) return;
-      const result = computeSkip(tracks, { trackId: track.id, offsetSeconds: audio.currentTime }, deltaSeconds);
+      const offsetSeconds = mediaInitialized.current && Number.isFinite(audio.currentTime)
+        && Number.isFinite(audio.duration) && audio.duration > 0
+        ? audio.currentTime : pendingRef.current?.positionSeconds ?? 0;
+      const result = computeSkip(tracks, { trackId: track.id, offsetSeconds }, deltaSeconds);
       if (!result) return;
       if (result.overflowedTrack) {
         const neighbour = deltaSeconds >= 0 ? findNextTrack(tracks, track.id) : findPreviousTrack(tracks, track.id);
@@ -349,6 +398,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     audio.preload = 'metadata';
 
     const onTimeUpdate = () => {
+      if (!mediaInitialized.current || !Number.isFinite(audio.currentTime)
+        || !Number.isFinite(audio.duration) || audio.duration <= 0) return;
+      if (pendingRef.current) pendingRef.current.positionSeconds = audio.currentTime;
       setPositionSeconds(audio.currentTime);
       const currentTrackId = audio.dataset.trackId ?? '';
       setNearEnd(
@@ -360,8 +412,26 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       );
     };
     const onLoaded = () => {
+      if (!Number.isFinite(audio.duration) || audio.duration <= 0) return;
+      if (!mediaInitialized.current) {
+        if (!pendingRef.current) return;
+        try {
+          audio.currentTime = clampPosition(pendingRef.current.positionSeconds, audio.duration);
+        } catch {
+          return;
+        }
+        mediaInitialized.current = true;
+        onTimeUpdate();
+      }
       setReady(true);
-      setDurationSeconds(Number.isFinite(audio.duration) ? audio.duration : 0);
+      setDurationSeconds(audio.duration);
+    };
+    const onDurationChange = () => {
+      if (mediaInitialized.current) onLoaded();
+    };
+    const onEmptied = () => {
+      mediaInitialized.current = false;
+      setReady(false);
     };
     const onPlay = () => setPlaying(true);
     const onPause = () => setPlaying(false);
@@ -384,13 +454,16 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       })();
     };
     const onError = () => {
-      setError(t('player.error.audioUnavailable'));
+      mediaInitialized.current = false;
+      setReady(false);
+      setError(playbackError());
       setPlaying(false);
     };
 
     audio.addEventListener('timeupdate', onTimeUpdate);
     audio.addEventListener('loadedmetadata', onLoaded);
-    audio.addEventListener('durationchange', onLoaded);
+    audio.addEventListener('durationchange', onDurationChange);
+    audio.addEventListener('emptied', onEmptied);
     audio.addEventListener('play', onPlay);
     audio.addEventListener('pause', onPause);
     audio.addEventListener('ended', onEnded);
@@ -399,13 +472,14 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     return () => {
       audio.removeEventListener('timeupdate', onTimeUpdate);
       audio.removeEventListener('loadedmetadata', onLoaded);
-      audio.removeEventListener('durationchange', onLoaded);
+      audio.removeEventListener('durationchange', onDurationChange);
+      audio.removeEventListener('emptied', onEmptied);
       audio.removeEventListener('play', onPlay);
       audio.removeEventListener('pause', onPause);
       audio.removeEventListener('ended', onEnded);
       audio.removeEventListener('error', onError);
     };
-  }, [t]);
+  }, [playbackError]);
 
   // After switching edition/track, record the new location immediately. Without
   // this, a listener who stops right after skipping forward would come back to

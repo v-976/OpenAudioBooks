@@ -1,6 +1,6 @@
 # OpenAudioBooks
 
-**Alpha 0.3.0 — development build. Not production-ready.**
+**Alpha 0.3.1 — development build. Not production-ready.**
 
 OpenAudioBooks is a free, public, **non-commercial** application for discovering,
 cataloguing and listening to audiobooks that are legally available to listen to
@@ -17,7 +17,7 @@ audio edition carries its own rights, attribution and licence information.
 
 | | |
 | --- | --- |
-| Version | 0.3.0 (Alpha) |
+| Version | 0.3.1 (Alpha) |
 | Interface language | Russian, English, Romanian (all complete) |
 | Preferred audiobook language | Russian, adjustable per device to any of the languages in the catalogue |
 | Client | Progressive Web App, mobile-first for Android Chrome and iPhone Safari, works in modern desktop browsers |
@@ -31,6 +31,12 @@ interface localization with first-launch language detection, and mobile PWA
 improvements (Media Session API, landscape support, service worker updates).
 The Alpha 0.1.x language architecture, local-first persistence and playback
 resume are unchanged and their tests still pass.
+
+Alpha 0.3.1 restores the last playback position and known track duration from
+local data before media loads, including cold offline launches. Failed streams
+cannot replace that position with an uninitialized media time. Offline play
+attempts show a connection message rather than an autoplay warning. Audio still
+requires a connection and is never cached for offline listening.
 
 ## Languages: three separate concepts
 
@@ -240,7 +246,7 @@ behaviour; `npm run dev` skips service-worker registration by design.
 
 ### Tests
 
-308 tests covering the domain model and narrator faceting, language
+348 tests covering the domain model and narrator faceting, language
 normalisation and filtering, duration normalisation, filtering and sorting in both
 directions, LibriVox payload mapping (including the audit's data defects),
 transport error handling, pagination de-duplication, the provider cache,

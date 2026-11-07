@@ -227,6 +227,7 @@ export const enBundle: CompleteLocaleBundle = {
     'Saved on this device: {time} into chapter "{track}".',
   'player.trackOfEdition': 'Chapter {track} of "{title}"',
   'player.error.noAudio': 'No audio files available for this audiobook.',
+  'player.error.offline': 'Audio is unavailable without an internet connection.',
   'player.error.playbackBlocked':
     'The browser blocked playback start. Press "Play" again.',
   'player.error.audioUnavailable':
