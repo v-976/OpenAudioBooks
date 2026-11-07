@@ -452,7 +452,7 @@ fixtures. This must be removed or made a build flag before any release.
 
 ## 9. PWA implementation
 
-- `public/manifest.webmanifest` — standalone display, start URL `/`, `orientation: any`,
+- `public/manifest.webmanifest` — standalone display, relative start URL `./`, `orientation: any`,
   theme and background colours, `any` and `maskable` icons.
 - `public/icons/` — generated placeholders at 192, 512 and 180 (apple-touch-icon).
 - `public/sw.js` — precaches the shell; cache-first same-origin assets;
@@ -473,6 +473,24 @@ fixtures. This must be removed or made a build flag before any release.
 
 The service worker never caches or proxies third-party audio. Known iOS
 limitations are documented in the README.
+
+### Project-path deployment
+
+The GitHub Pages workflow builds Alpha 0.3.2 with Vite `--base=/OpenAudioBooks/`;
+without this flag local builds still use `/`. `BrowserRouter.basename`, manifest
+links in HTML, SW registration/scope and development asset paths follow the Vite
+base. The MDS index loader already uses `import.meta.env.BASE_URL` and is unchanged.
+Manifest id/start/scope/icon URLs resolve relative to the manifest's directory.
+The SW computes shell URLs from `self.registration.scope`, ignores paths outside
+that scope, and only reads/removes caches in its own scope namespace. This avoids
+interference with other Pages projects on the same origin. Navigation remains
+network-first, but only successful responses can replace the cached shell.
+
+For direct BrowserRouter links, the Pages artifact includes a `404.html` copy of
+the built shell. GitHub serves this body at the original deep-link URL with HTTP
+404; base-prefixed assets still load and the Router renders the original route.
+No redirect shim, hash-router conversion, backend or audio proxy is introduced.
+See README for the one-time manual Pages Source setting and deployment commands.
 
 ### Media Session API
 

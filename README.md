@@ -249,9 +249,51 @@ The application is entirely static. There is no backend to run. `npm run preview
 serves `dist/` over HTTP, which is what you want for testing service-worker
 behaviour; `npm run dev` skips service-worker registration by design.
 
+### GitHub Pages deployment (Alpha 0.3.2)
+
+Public URL: **https://v-976.github.io/OpenAudioBooks/** (GitHub-managed HTTPS).
+
+`.github/workflows/pages.yml` builds on pushes to `master` or a manual Actions
+run: Node.js 22, `npm ci`, then `npm run build -- --base=/OpenAudioBooks/`.
+Only `dist/` is uploaded and deployed with the official Pages actions. No custom
+certificates, secrets, backend or third-party hosting are needed. The project
+version stays 0.3.2: this is a deployment change, not a new feature release.
+
+One-time owner setup: **Settings → Pages → Build and deployment → Source →
+GitHub Actions**. The workflow deliberately does not enable Pages or change
+repository settings. If the first deployment ran before that setup and failed,
+rerun it from **Actions → Deploy GitHub Pages → Run workflow → master**.
+
+Vite's CLI `--base` controls assets, Router `basename`, SW registration and the
+existing MDS index request. Manifest paths are relative to the manifest; the SW
+derives precache paths and cache isolation from its registration scope. Root-based
+local development/builds remain supported without the flag. Development audio
+fixtures also use the configured base. External provider URLs are unchanged.
+
+Pages has no SPA rewrite rules. The workflow copies the built `index.html` to
+`404.html`, so a direct link such as `/OpenAudioBooks/now-playing` loads the same
+app and BrowserRouter preserves its path, query and fragment. The initial HTTP
+status on these deep links is **404** (a Pages limitation), although the app
+renders normally. Failed/404 navigations never overwrite the SW's cached shell.
+Do not use a relative Vite base (`./`): nested URLs need the explicit project base.
+
+To inspect the Pages build locally:
+
+```bash
+npm run build -- --base=/OpenAudioBooks/
+# Copy dist/index.html to dist/404.html to reproduce the workflow artifact.
+npm run preview -- --base=/OpenAudioBooks/
+```
+
+Open `http://localhost:4173/OpenAudioBooks/`. Vite preview provides its own SPA
+fallback, so the Pages-specific 404 response must also be checked on the public
+site. Final installation, offline shell, playback and update verification on
+Titan and iPhone remain manual. User data is per origin/browser; the public site
+does not automatically inherit progress saved on a local HTTPS testing address.
+
 ### Tests
 
-359 tests covering the domain model and narrator faceting, language
+366 tests covering the domain model and narrator faceting, language
 normalisation and filtering, duration normalisation, filtering and sorting in both
 directions, LibriVox payload mapping (including the audit's data defects),
 transport error handling, pagination de-duplication, the provider cache,

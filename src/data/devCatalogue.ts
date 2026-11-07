@@ -51,7 +51,7 @@ export const DEV_SOURCE_IDS = {
  * exactly the kind of bug that only shows up once playback is started from a
  * nested screen.
  */
-const DEV_FIXTURE_BASE = '/audio/dev';
+const DEV_FIXTURE_BASE = `${import.meta.env.BASE_URL}audio/dev`;
 
 const sources: Source[] = [
   {

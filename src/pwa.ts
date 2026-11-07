@@ -31,7 +31,7 @@ export function registerServiceWorker(): void {
 
   const register = () => {
     navigator.serviceWorker
-      .register('/sw.js')
+      .register(`${import.meta.env.BASE_URL}sw.js`, { scope: import.meta.env.BASE_URL })
       .then((registration) => {
         // Listen for messages from the service worker (update notifications).
         navigator.serviceWorker.addEventListener('message', (event) => {

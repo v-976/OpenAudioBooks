@@ -13,8 +13,12 @@
  *  - collect, store or transmit any usage, telemetry or analytics data.
  */
 
-const CACHE_VERSION = 'openaudiobooks-shell-v4';
-const SHELL_URLS = ['/', '/index.html', '/manifest.webmanifest', '/icons/icon-192.png', '/icons/icon-512.png'];
+const SCOPE_URL = new URL(self.registration.scope);
+const CACHE_PREFIX = `openaudiobooks-shell-${encodeURIComponent(SCOPE_URL.pathname)}-`;
+const CACHE_VERSION = `${CACHE_PREFIX}v5`;
+const SHELL_INDEX = new URL('index.html', SCOPE_URL).href;
+const SHELL_URLS = ['./', 'index.html', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-512.png']
+  .map((path) => new URL(path, SCOPE_URL).href);
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
@@ -31,7 +35,8 @@ self.addEventListener('activate', (event) => {
     caches
       .keys()
       .then((keys) =>
-        Promise.all(keys.filter((key) => key !== CACHE_VERSION).map((key) => caches.delete(key))),
+        Promise.all(keys.filter((key) => key.startsWith(CACHE_PREFIX) && key !== CACHE_VERSION)
+          .map((key) => caches.delete(key))),
       )
       .then(() => self.clients.claim()),
   );
@@ -63,33 +68,37 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(request.url);
 
   // All audiobook audio and provider traffic goes directly to the network.
-  if (url.origin !== self.location.origin) return;
+  if (url.origin !== SCOPE_URL.origin || !url.pathname.startsWith(SCOPE_URL.pathname)) return;
 
   if (request.mode === 'navigate') {
     event.respondWith(
       fetch(request)
         .then((response) => {
-          const copy = response.clone();
-          void caches.open(CACHE_VERSION).then((cache) => cache.put('/index.html', copy));
+          // Pages serves the SPA's 404.html on deep links. Never replace the
+          // cached shell with a 404 response or another failed navigation.
+          if (response.ok) {
+            const copy = response.clone();
+            void caches.open(CACHE_VERSION).then((cache) => cache.put(SHELL_INDEX, copy));
+          }
           return response;
         })
-        .catch(() => caches.match('/index.html').then((cached) => cached ?? caches.match('/'))),
+        .catch(() => caches.open(CACHE_VERSION).then((cache) => cache.match(SHELL_INDEX))),
     );
     return;
   }
 
   event.respondWith(
-    caches.match(request).then((cached) => {
+    caches.open(CACHE_VERSION).then((cache) => cache.match(request).then((cached) => {
       if (cached) return cached;
       return fetch(request)
         .then((response) => {
           if (response.ok && response.type === 'basic') {
             const copy = response.clone();
-            void caches.open(CACHE_VERSION).then((cache) => cache.put(request, copy));
+            void cache.put(request, copy);
           }
           return response;
         })
         .catch(() => cached);
-    }),
+    })),
   );
 });

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { onServiceWorkerUpdate } from './pwa';
+import { onServiceWorkerUpdate, registerServiceWorker } from './pwa';
 
 /**
  * PWA update notification tests.
@@ -58,5 +58,27 @@ describe('PWA manifest requirements', () => {
     // by checking the file exists in the build output.
     // Direct file reading is tested in the build verification step.
     expect(true).toBe(true);
+  });
+});
+
+describe('base-aware service worker registration', () => {
+  it('registers the worker and scope under the production base', async () => {
+    const register = vi.fn().mockResolvedValue({ addEventListener: vi.fn() });
+    vi.stubEnv('DEV', false);
+    vi.stubEnv('BASE_URL', '/OpenAudioBooks/');
+    vi.stubGlobal('navigator', { serviceWorker: { register, addEventListener: vi.fn() } });
+    vi.spyOn(document, 'readyState', 'get').mockReturnValue('complete');
+    vi.useFakeTimers();
+    try {
+      registerServiceWorker();
+      await Promise.resolve();
+      expect(register).toHaveBeenCalledWith('/OpenAudioBooks/sw.js', { scope: '/OpenAudioBooks/' });
+    } finally {
+      vi.clearAllTimers();
+      vi.useRealTimers();
+      vi.restoreAllMocks();
+      vi.unstubAllGlobals();
+      vi.unstubAllEnvs();
+    }
   });
 });
