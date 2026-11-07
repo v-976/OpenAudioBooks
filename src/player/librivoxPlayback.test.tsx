@@ -1,16 +1,19 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { IDBFactory } from 'fake-indexeddb';
-import { act, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { renderApp, waitForUserData } from '../test/renderApp';
 import { resetDatabaseHandle } from '../persistence/db';
 import { writeCachedProjects } from '../persistence/catalogueCacheRepository';
 import { normalizePreferences, savePreferences } from '../persistence/preferencesRepository';
+import { getAllUserState } from '../persistence/userStateRepository';
 import {
   RUSSIAN_PROJECT,
   SPARSE_PROJECT,
 } from '../sources/librivox/fixtures';
 
 const FETCHED_AT = '2026-10-08T00:00:00.000Z';
+
+afterEach(() => vi.restoreAllMocks());
 
 beforeEach(() => {
   resetDatabaseHandle();
@@ -26,6 +29,49 @@ function playerAudio(): HTMLAudioElement {
 }
 
 describe('LibriVox Listen button regression', () => {
+  it('reinitializes a failed LibriVox stream and preserves chapter, seek position and normal resume', async () => {
+    await writeCachedProjects([{ id: '559', project: RUSSIAN_PROJECT, fetchedAt: FETCHED_AT }]);
+    renderApp('/search');
+    await waitForUserData();
+    const title = await screen.findByText('Zapiski iz podpolya (Notes from the Underground)');
+    const card = title.closest('.card') as HTMLElement;
+    await act(async () => within(card).getByRole('button', { name: 'Слушать' }).click());
+    const audio = playerAudio();
+    const source = audio.src;
+    const chapter = audio.dataset.trackId;
+    await act(async () => {
+      Object.defineProperty(audio, 'duration', { configurable: true, value: 600 });
+      fireEvent.loadedMetadata(audio);
+      audio.currentTime = 65;
+      fireEvent.timeUpdate(audio);
+      fireEvent.error(audio);
+      Object.defineProperty(audio, 'paused', { configurable: true, value: true });
+    });
+    const load = vi.spyOn(audio, 'load').mockImplementation(() => {
+      audio.currentTime = 0;
+      fireEvent.emptied(audio);
+      fireEvent.timeUpdate(audio);
+    });
+    const transport = screen.getByRole('group', { name: 'Слушать' });
+    await act(async () => within(transport).getByRole('button', { name: 'Слушать' }).click());
+    expect(load).toHaveBeenCalledTimes(1);
+    expect(audio.src).toBe(source);
+    expect(audio.dataset.trackId).toBe(chapter);
+    await act(async () => {
+      fireEvent.loadedMetadata(audio);
+      fireEvent.playing(audio);
+      within(transport).getByRole('button', { name: 'Пауза' }).click();
+    });
+    expect(audio.currentTime).toBe(65);
+    expect(screen.queryByRole('alert')).toBeNull();
+    await waitFor(async () => expect((await getAllUserState())[0]).toMatchObject({
+      trackId: chapter, positionSeconds: 65,
+    }));
+    await act(async () => within(transport).getByRole('button', { name: 'Слушать' }).click());
+    expect(audio.paused).toBe(false);
+    expect(load).toHaveBeenCalledTimes(1); // healthy pause/resume never reloads
+  });
+
   it('loads the real LibriVox MP3 queue and opens the player', async () => {
     await writeCachedProjects([
       { id: '559', project: RUSSIAN_PROJECT, fetchedAt: FETCHED_AT },

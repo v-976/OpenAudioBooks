@@ -175,3 +175,206 @@ describe('local progress before media initialization', () => {
     await expectSaved(167);
   });
 });
+
+/** Only model the failed-resource/reset contract; no media bytes or redirects. */
+function failedResource() {
+  const element = audio();
+  Object.defineProperty(element, 'error', { configurable: true, value: { code: 2 } });
+  Object.defineProperty(element, 'networkState', { configurable: true, value: 3 });
+  Object.defineProperty(element, 'readyState', { configurable: true, value: 0 });
+  Object.defineProperty(element, 'paused', { configurable: true, value: true });
+  element.currentTime = 0;
+}
+
+function retryLifecycle() {
+  const element = audio();
+  const load = vi.spyOn(element, 'load').mockImplementation(() => {
+    // A fresh resource selection clears the terminal media error.
+    expect(element.src).toBe(`https://mds-old.ru/api/play/${record.id}`);
+    Object.defineProperty(element, 'error', { configurable: true, value: null });
+    Object.defineProperty(element, 'networkState', { configurable: true, value: 2 });
+    Object.defineProperty(element, 'readyState', { configurable: true, value: 0 });
+    element.currentTime = 0;
+    fireEvent.emptied(element);
+    fireEvent.timeUpdate(element);
+  });
+  const play = vi.spyOn(element, 'play').mockImplementation(async () => {
+    if (element.error) throw new DOMException('Failed resource', 'NotSupportedError');
+    Object.defineProperty(element, 'paused', { configurable: true, value: false });
+    fireEvent.play(element);
+  });
+  return { load, play };
+}
+
+async function pressPlay() {
+  await act(async () => within(document.querySelector('.transport') as HTMLElement)
+    .getByRole('button', { name: 'Слушать' }).click());
+}
+
+async function finishRetry() {
+  await act(async () => {
+    Object.defineProperty(audio(), 'duration', { configurable: true, value: 822 });
+    Object.defineProperty(audio(), 'readyState', { configurable: true, value: 1 });
+    fireEvent.loadedMetadata(audio());
+    fireEvent.playing(audio());
+    window.dispatchEvent(new Event('pagehide'));
+  });
+  expect(audio().currentTime).toBe(167);
+  expect(screen.queryByRole('alert')).toBeNull();
+  await expectSaved(167);
+}
+
+describe('explicit playback recovery after a failed resource', () => {
+  it('reloads the stable MDS URL after offline cold start and resumes without losing progress', async () => {
+    const online = vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+    const app = await open();
+    const { load, play } = retryLifecycle();
+    const redirected = vi.spyOn(audio(), 'currentSrc', 'get')
+      .mockReturnValue('https://example.invalid/dev:expired.mp3?signature=dev:expired');
+    const setSource = vi.spyOn(audio(), 'src', 'set');
+    await act(async () => {
+      failedResource();
+      fireEvent.error(audio());
+    });
+    expect(screen.getByRole('alert').textContent).toContain('без подключения к интернету');
+    online.mockReturnValue(true);
+    await act(async () => window.dispatchEvent(new Event('online')));
+    expect(load).not.toHaveBeenCalled();
+    expect(play).not.toHaveBeenCalled();
+    await pressPlay();
+    expect(load).toHaveBeenCalledTimes(1);
+    expect(play).toHaveBeenCalledTimes(1);
+    expect(setSource).toHaveBeenCalledWith(`https://mds-old.ru/api/play/${record.id}`);
+    expect(redirected).not.toHaveBeenCalled();
+    expect(audio().currentTime).toBe(0); // not yet initialized, never authoritative
+    expect(document.querySelector('.mini-player__time')?.textContent).toBe('2:47 / 13:42');
+    await act(async () => window.dispatchEvent(new Event('pagehide')));
+    await expectSaved(167);
+    await finishRetry();
+    app.unmount();
+    resetDatabaseHandle();
+    online.mockReturnValue(false);
+    await open();
+    await expectSaved(167);
+  });
+
+  it('makes a fresh load on every explicit retry after another media error', async () => {
+    await open();
+    const { load, play } = retryLifecycle();
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      await act(async () => {
+        failedResource();
+        fireEvent.error(audio());
+      });
+      expect(screen.getByRole('alert').textContent).toContain('Не удалось загрузить аудио');
+      await pressPlay();
+      expect(load).toHaveBeenCalledTimes(attempt);
+      expect(play).toHaveBeenCalledTimes(attempt);
+      await expectSaved(167);
+    }
+    await finishRetry();
+  });
+
+  it('does not retry or play while still offline after media error', async () => {
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+    await open();
+    const { load, play } = retryLifecycle();
+    await act(async () => {
+      failedResource();
+      fireEvent.error(audio());
+    });
+    await pressPlay();
+    expect(load).not.toHaveBeenCalled();
+    expect(play).not.toHaveBeenCalled();
+    expect(screen.getByRole('alert').textContent).toContain('без подключения к интернету');
+    await expectSaved(167);
+  });
+
+  it('ignores an older play rejection aborted by a newer resource load', async () => {
+    await open();
+    const { load, play } = retryLifecycle();
+    let rejectEarlier: (reason: unknown) => void = () => { throw new Error('No pending play'); };
+    play.mockImplementationOnce(() => new Promise<void>((_resolve, reject) => { rejectEarlier = reject; }));
+    await act(async () => {
+      failedResource();
+      fireEvent.error(audio());
+    });
+    await pressPlay();
+    await act(async () => {
+      failedResource();
+      fireEvent.error(audio());
+    });
+    await pressPlay();
+    expect(load).toHaveBeenCalledTimes(2);
+    await finishRetry();
+    await act(async () => rejectEarlier(new DOMException('Superseded by load()', 'AbortError')));
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(within(document.querySelector('.transport') as HTMLElement)
+      .getByRole('button', { name: 'Пауза' })).toBeTruthy();
+    await expectSaved(167);
+  });
+
+  it('keeps real browser rejection distinct when a recovered resource cannot autoplay', async () => {
+    await open();
+    const { load, play } = retryLifecycle();
+    await act(async () => {
+      failedResource();
+      fireEvent.error(audio());
+    });
+    play.mockRejectedValueOnce(new DOMException('User activation required', 'NotAllowedError'));
+    await pressPlay();
+    expect(screen.getByRole('alert').textContent).toContain('Браузер не разрешил');
+    await expectSaved(167);
+    await pressPlay();
+    expect(load).toHaveBeenCalledTimes(1); // permission failure is not a failed source
+    await finishRetry();
+  });
+
+  it('retries a source failure reported by play() even without a media error event', async () => {
+    await open();
+    const { load, play } = retryLifecycle();
+    play.mockRejectedValueOnce(new DOMException('Source failed', 'NotSupportedError'));
+    await pressPlay();
+    expect(screen.getByRole('alert').textContent).toContain('Не удалось загрузить аудио');
+    expect(load).not.toHaveBeenCalled();
+    await pressPlay();
+    expect(load).toHaveBeenCalledTimes(1);
+    await finishRetry();
+  });
+
+  it('does not classify a cancelled play as a failed resource or reload on the next Play', async () => {
+    await open();
+    const { load, play } = retryLifecycle();
+    play.mockRejectedValueOnce(new DOMException('Interrupted by pause()', 'AbortError'));
+    await pressPlay();
+    expect(screen.queryByRole('alert')).toBeNull();
+    await pressPlay();
+    expect(load).not.toHaveBeenCalled();
+    await finishRetry();
+  });
+
+  it.each(['error', 'networkState'])('detects terminal media %s even before an error event is delivered', async (property) => {
+    await open();
+    const { load } = retryLifecycle();
+    Object.defineProperty(audio(), property, {
+      configurable: true, value: property === 'error' ? { code: 4 } : 3,
+    });
+    await pressPlay();
+    expect(load).toHaveBeenCalledTimes(1);
+    await finishRetry();
+  });
+
+  it('retries the current edition through the My Books Play entry point too', async () => {
+    await open();
+    const { load } = retryLifecycle();
+    await act(async () => {
+      failedResource();
+      fireEvent.error(audio());
+      screen.getByRole('link', { name: 'Моя полка' }).click();
+    });
+    const resume = await screen.findByRole('button', { name: 'Продолжить' });
+    await act(async () => resume.click());
+    expect(load).toHaveBeenCalledTimes(1);
+    await finishRetry();
+  });
+});

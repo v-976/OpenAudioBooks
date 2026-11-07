@@ -352,6 +352,19 @@ Offline play attempts use a localized connection error; online `NotAllowedError`
 uses the browser-rejection message, while other failures use the source error.
 There is no stored schema change or migration, and no audio caching.
 
+Alpha 0.3.2 retries failed resources only on explicit Play (including Media
+Session Play). A media error, a source-related play rejection, `audio.error`, or
+`NETWORK_NO_SOURCE` causes a fresh `src` assignment from the current domain
+track's `audioUrl` and `load()`. `HAVE_NOTHING` alone is not a failure: metadata
+may still be loading. For MDS this reselects the stable `/api/play/{id}` resolver;
+redirected `currentSrc` URLs are never read or persisted. The 0.3.1 pending local
+offset remains authoritative during reset and is applied by the metadata handler.
+`play()` is requested within the user gesture, allowing the browser to queue
+playback while metadata loads rather than losing user activation by awaiting it.
+Load generations ignore rejections from superseded play promises; `playing`
+clears the previous error. Healthy pause/resume does not reload the source, and
+there is no automatic load or playback on an `online` event. Schema is unchanged.
+
 `play(editionId)` with no explicit track or offset resolves against the position
 stored for that edition, so a bare "Play" or "Resume" from any screen lands on
 the right chapter at the right second. An explicit `trackId` always wins, which

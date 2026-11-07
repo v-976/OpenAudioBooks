@@ -13,7 +13,7 @@
  *  - collect, store or transmit any usage, telemetry or analytics data.
  */
 
-const CACHE_VERSION = 'openaudiobooks-shell-v3';
+const CACHE_VERSION = 'openaudiobooks-shell-v4';
 const SHELL_URLS = ['/', '/index.html', '/manifest.webmanifest', '/icons/icon-192.png', '/icons/icon-512.png'];
 
 self.addEventListener('install', (event) => {

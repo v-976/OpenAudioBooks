@@ -62,6 +62,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const pendingRef = useRef<{ trackId: string; positionSeconds: number } | undefined>(undefined);
   // Media time is not authoritative until the requested offset has been applied.
   const mediaInitialized = useRef(false);
+  const mediaFailed = useRef(false);
+  // load() aborts earlier play promises; their rejections must not poison a retry.
+  const loadGeneration = useRef(0);
   const lastSaveRef = useRef(0);
 
   const edition = editionId ? index.editionsById.get(editionId) : undefined;
@@ -135,6 +138,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       setReady(false);
       setPlaying(false);
       mediaInitialized.current = false;
+      mediaFailed.current = false;
+      const generation = ++loadGeneration.current;
       setPositionSeconds(Math.max(0, startAtSeconds));
       setDurationSeconds(nextTrack.durationSeconds ?? (nextTracks.length === 1
         ? index.editionsById.get(nextEditionId)?.durationSeconds ?? 0 : 0));
@@ -153,6 +158,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
           return;
         }
         void audio.play().catch((reason: unknown) => {
+          if (generation !== loadGeneration.current) return;
+          if (reason instanceof DOMException && reason.name === 'AbortError') return;
+          mediaFailed.current = !(reason instanceof DOMException && reason.name === 'NotAllowedError');
           setPlaying(false);
           setError(playbackError(reason));
         });
@@ -160,6 +168,35 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     },
     [getAudio, index, playbackRate, playbackError, t],
   );
+
+  /** Retry failed resources from the adapter URL, never a redirected currentSrc. */
+  const startLoadedTrack = useCallback(async (currentEditionId: string, currentTrackId: string, offset: number) => {
+    const audio = getAudio();
+    if (!audio) return false;
+    setError(undefined);
+    if (navigator.onLine === false) {
+      setError(playbackError());
+      return false;
+    }
+    if (mediaFailed.current || audio.error || audio.networkState === audio.NETWORK_NO_SOURCE) {
+      loadTrack(currentEditionId, currentTrackId, offset, true);
+      return true;
+    }
+    const generation = loadGeneration.current;
+    try {
+      audio.playbackRate = playbackRate;
+      await audio.play();
+      return true;
+    } catch (reason) {
+      if (generation !== loadGeneration.current) return false;
+      if (reason instanceof DOMException && reason.name === 'AbortError') return false;
+      mediaFailed.current = !(reason instanceof DOMException && reason.name === 'NotAllowedError');
+      if (mediaFailed.current) mediaInitialized.current = false;
+      setPlaying(false);
+      setError(playbackError(reason));
+      return false;
+    }
+  }, [getAudio, loadTrack, playbackRate, playbackError]);
 
   // Restore the last session from local data, without autoplay or waiting for media.
   useEffect(() => {
@@ -206,16 +243,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
       if (sameEdition && !targetTrackId && startAtSeconds === undefined) {
         // Already loaded and no destination requested: continue where we are.
-        try {
-          if (navigator.onLine === false) {
-            setError(playbackError());
-            return;
-          }
-          audio.playbackRate = playbackRate;
-          await audio.play();
+        if (trackId && await startLoadedTrack(targetEditionId, trackId, pendingRef.current?.positionSeconds ?? 0)) {
           navigate('/now-playing');
-        } catch (reason) {
-          setError(playbackError(reason));
         }
         return;
       }
@@ -241,16 +270,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         resolved.trackId === trackId &&
         Math.abs(resolved.offsetSeconds - audio.currentTime) < 0.5
       ) {
-        try {
-          if (navigator.onLine === false) {
-            setError(playbackError());
-            return;
-          }
-          audio.playbackRate = playbackRate;
-          await audio.play();
+        if (await startLoadedTrack(resolved.audioEditionId, resolved.trackId, resolved.offsetSeconds)) {
           navigate('/now-playing');
-        } catch (reason) {
-          setError(playbackError(reason));
         }
         return;
       }
@@ -259,7 +280,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       loadTrack(resolved.audioEditionId, resolved.trackId, resolved.offsetSeconds, true);
       navigate('/now-playing');
     },
-    [editionId, getAudio, index, loadTrack, navigate, persist, playbackRate, playbackError, stateFor, t, trackId],
+    [editionId, getAudio, index, loadTrack, navigate, persist, startLoadedTrack, stateFor, t, trackId],
   );
 
   const pause = useCallback(async () => {
@@ -271,20 +292,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   }, [persist]);
 
   const resume = useCallback(async () => {
-    const audio = audioRef.current;
-    if (!audio || !track) return;
-    setError(undefined);
-    if (navigator.onLine === false) {
-      setError(playbackError());
-      return;
-    }
-    try {
-      audio.playbackRate = playbackRate;
-      await audio.play();
-    } catch (reason) {
-      setError(playbackError(reason));
-    }
-  }, [playbackRate, playbackError, track]);
+    if (!track) return;
+    await startLoadedTrack(track.audioEditionId, track.id, pendingRef.current?.positionSeconds ?? 0);
+  }, [startLoadedTrack, track]);
 
   const toggle = useCallback(async () => {
     const audio = audioRef.current;
@@ -434,6 +444,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       setReady(false);
     };
     const onPlay = () => setPlaying(true);
+    const onPlaying = () => {
+      mediaFailed.current = false;
+      setError(undefined);
+    };
     const onPause = () => setPlaying(false);
     const onEnded = () => {
       setPlaying(false);
@@ -454,6 +468,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       })();
     };
     const onError = () => {
+      mediaFailed.current = true;
       mediaInitialized.current = false;
       setReady(false);
       setError(playbackError());
@@ -465,6 +480,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     audio.addEventListener('durationchange', onDurationChange);
     audio.addEventListener('emptied', onEmptied);
     audio.addEventListener('play', onPlay);
+    audio.addEventListener('playing', onPlaying);
     audio.addEventListener('pause', onPause);
     audio.addEventListener('ended', onEnded);
     audio.addEventListener('error', onError);
@@ -475,6 +491,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       audio.removeEventListener('durationchange', onDurationChange);
       audio.removeEventListener('emptied', onEmptied);
       audio.removeEventListener('play', onPlay);
+      audio.removeEventListener('playing', onPlaying);
       audio.removeEventListener('pause', onPause);
       audio.removeEventListener('ended', onEnded);
       audio.removeEventListener('error', onError);
